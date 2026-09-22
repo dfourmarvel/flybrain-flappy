@@ -127,10 +127,18 @@ Download MaleCNS v1.0 connectome data. Primary route is the **public bulk downlo
 login: the flat connectome lives under `gs://flyem-male-cns/v1.0/connectome-data/flat-connectome/`,
 also reachable over plain HTTPS at `https://storage.googleapis.com/flyem-male-cns/v1.0/...`.
 
-**Verify before writing code:** list the bucket, record the actual filenames and columns in
-`docs/DATA.md`. Do not assume column names. Expect at minimum a neuron/body annotation table
-(body id, cell type/instance, predicted neurotransmitter, soma side) and an edge table
-(pre body id, post body id, synapse weight).
+**Verified 2026-09-22 (lead spike).** Files are Apache Feather (read with `pandas.read_feather`,
+needs `pyarrow`, pinned in `requirements.txt`). Download exactly these three, nothing else (the
+syn-partners/syn-points/tbar files are 3–13 GB each and not needed):
+
+| File | Size | Use |
+|---|---|---|
+| `body-annotations-male-cns-v1.0-minconf-0.5.feather` | 14 MB | 211,577 rows; key cols `bodyId`, `type`, `instance`, `somaSide`, `superclass`, `class`, `status` |
+| `body-neurotransmitters-male-cns-v1.0.feather` | 43 MB | key cols `body`, `cell_type`, `consensus_nt`, `predicted_nt_confidence` |
+| `connectome-weights-male-cns-v1.0-minconf-0.5-significant-only.feather` | 502 MB | edge table; record its real column names in `docs/DATA.md` |
+
+Seed type labels confirmed in the `type` column: `LC4` (126), `LPLC2` (185), `DNp01`, `DNp02`,
+`DNp04`, `DNp06`, `DNp11` (2 each, left and right). Use `consensus_nt` for edge signs in Step 2.
 
 Fallback if the bulk files are unusable: `neuprint-python` against dataset `male-cns:v1.0`, which
 **requires a personal token Daniel must create himself** at neuPrint (Google login). The builder must

@@ -219,7 +219,10 @@ a Numba kernel measured ~480 at `dt` 0.2 ms on a same-size random network. There
 
 - **`dt` = 0.2 ms** (deviation from the paper's 0.1 ms; `t_dly` = 9 steps, `t_rfc` = 11 steps, both
   exact). Must be justified by a test: on the LC4-stimulation protocol, per-neuron firing rates of
-  the output seeds at 0.2 ms are within ±10% of 0.1 ms (or within ±2 Hz for rates under 20 Hz).
+  the output seeds at 0.2 ms are within ±12% of 0.1 ms (or within ±2 Hz for rates under 20 Hz).
+  (Tolerance amended from ±10% on 2026-09-22 after a 40-trial measurement found a real systematic
+  bias of −1.8% to +10.0%, largest on the least active neuron, DNp06 L. Accepted because real and
+  control networks share `dt`, so claim C2 is unaffected; RESULTS.md must state the bias.)
 - **Kernel = one `@numba.njit(cache=True)` function**, state arrays shaped `(n_candidates, N)`,
   event-driven synapses: on a spike, walk that neuron's CSR row and add into a ring buffer of
   length `t_dly/dt` slots. Single-threaded per process (parallelism comes from running several

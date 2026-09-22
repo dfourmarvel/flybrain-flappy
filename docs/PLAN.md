@@ -66,6 +66,7 @@ the experiment until C2 passes.** The control protocol is fixed before any resul
 | Sparse matrices | `scipy` | `1.16.2` |
 | Tables | `pandas` | `2.3.2` |
 | Optimiser | `cma` (CMA-ES) | `4.0.0` |
+| JIT compiler | `numba` (simulator kernel) | `0.67.0` |
 | Stats | `scipy.stats` (from scipy above) | — |
 | Plots | `matplotlib` | `3.10.6` |
 | Tests | `pytest` | `8.4.2` |
@@ -213,13 +214,23 @@ input mapping replaces with a rate-coded Poisson drive onto the input seeds usin
 If `dt` is raised for speed (performance gate), keep `t_dly` as a whole number of steps and record
 the change.
 
-Required design: the state update is a **batched** sparse mat-vec, shape `(n_candidates, n_neurons)`,
-so an entire CMA-ES population steps in one call. This is what makes Step 6 affordable.
+**Amended 2026-09-22 (lead benchmark).** Plain NumPy measured ~50–90 simulated s per wall-min;
+a Numba kernel measured ~480 at `dt` 0.2 ms on a same-size random network. Therefore:
+
+- **`dt` = 0.2 ms** (deviation from the paper's 0.1 ms; `t_dly` = 9 steps, `t_rfc` = 11 steps, both
+  exact). Must be justified by a test: on the LC4-stimulation protocol, per-neuron firing rates of
+  the output seeds at 0.2 ms are within ±10% of 0.1 ms (or within ±2 Hz for rates under 20 Hz).
+- **Kernel = one `@numba.njit(cache=True)` function**, state arrays shaped `(n_candidates, N)`,
+  event-driven synapses: on a spike, walk that neuron's CSR row and add into a ring buffer of
+  length `t_dly/dt` slots. Single-threaded per process (parallelism comes from running several
+  training runs at once in Step 6, one per core).
+- Poisson input drive and the RNG live inside the kernel, seeded per call, so results are
+  reproducible.
 
 **Performance gate:** benchmark on this laptop and record it. The simulator must reach
-**>= 2,000 simulated seconds of brain time per minute of wall clock** at population size 32.
-If it does not: first raise `dt` toward 0.5 ms, then shrink the sub-circuit (Step 2 gate), then
-stop and report. Do not proceed to Step 6 with a slower simulator — 60 training runs will not finish.
+**>= 400 simulated seconds of brain time per wall-clock minute per process** at population 16 on
+the real sub-circuit. If it does not: profile, then shrink the sub-circuit (weight threshold 10,
+3 hops = 1,531 neurons), then stop and report.
 
 - [ ] `tests/test_lif.py`: a single isolated neuron driven by constant current fires at the analytically expected rate (±5%).
 - [ ] With zero input, the network is silent (no spontaneous spiking) for 5 simulated seconds.
@@ -254,10 +265,14 @@ different neurons — this is the only structural choice in the mapping, and it 
 **Readout (descending neurons → flap).** A weighted sum of the recent spike counts of the output-seed
 descending neurons (exponentially-decaying spike trace, one time constant parameter shared across
 neurons), plus a bias, compared against zero. Above zero → flap this frame. One weight per output-seed
-neuron. **Weights are on the readout, not on the connectome.**
+neuron **type and side** (DNp01/02/04/06/11 × left/right = 10 weights). **Weights are on the
+readout, not on the connectome.**
 
-Total parameter count must be **< 100**. Record it. If the sub-circuit yields more than ~60 output
-seeds, group them by cell type and learn one weight per type.
+Total parameter count: 4 input + 10 readout weights + 1 trace time constant + 1 bias = **16**.
+Record it. (Amended 2026-09-22: fewer parameters is what makes Step 6 fit the compute budget.)
+
+The left/right split of input seeds for above/below-gap is an interface convention with no
+biological meaning (left/right is really visual field side). `docs/RESULTS.md` must say so.
 
 Brain state persists across frames for the whole episode (L4). The only reset is at episode start.
 
@@ -267,10 +282,13 @@ Brain state persists across frames for the whole episode (L4). The only reset is
 
 ### Step 6 — Training (`train.py`)
 
-CMA-ES over the Step 5 parameter vector. Fitness = mean score over **5 fixed evaluation seeds**
-(the same 5 for every candidate and every run — no seed lottery), with a small survival-time bonus to
-break ties among zero-score candidates. Population 32, budget **300 generations or 2 hours wall clock
-per run, whichever comes first**. Each run writes `runs/<network>/<seed>/` containing: the config, the
+CMA-ES over the Step 5 parameter vector. Fitness = mean score over **3 fixed evaluation seeds**
+(the same 3 for every candidate and every run — no seed lottery), with a small survival-time bonus to
+break ties among zero-score candidates. Training episodes are capped at **600 frames (15 s brain
+time)**; held-out evaluation uses the full 1,500-frame game. Population 16, budget **150
+generations or 90 minutes wall clock per run, whichever comes first**. Runs execute as parallel
+processes, **6 at once** (leave 2 cores free). Amended 2026-09-22 from pop 32 / 5 seeds / 300 gens,
+which projected to hundreds of hours. Each run writes `runs/<network>/<seed>/` containing: the config, the
 best parameter vector, per-generation fitness history, and the final evaluation on **20 held-out seeds
 never used during training**.
 

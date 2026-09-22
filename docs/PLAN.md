@@ -26,6 +26,20 @@ Two claims are being tested:
 If C2 fails, that is a publishable-quality negative result and the write-up says so. **Do not tune
 the experiment until C2 passes.** The control protocol is fixed before any result is seen.
 
+**Pre-registered outcome measures (fixed 2026-09-22, before any control network was trained).**
+A lead pilot run (25 generations, ~14 min, real connectome, seed 7) reached held-out scores of
+22/22/22 — the maximum possible in a 1,500-frame game — on three unseen seeds. The task is
+therefore solvable and a ceiling effect is likely, so two measures are fixed in advance:
+
+- **Primary — held-out mean score** over the 20 held-out seeds (full 1,500-frame games).
+- **Secondary — generations to competence**, the first generation whose best candidate reaches a
+  held-out score >= 10, scored on 5 fixed probe seeds evaluated every 5 generations. Censored at
+  the run's budget (report as "not reached" and use a survival/rank test, not a mean).
+
+If both arms saturate at 22, the primary comparison is uninformative and the secondary is the
+result. Report both regardless of which favours which. No third measure may be added after
+control results are seen.
+
 ---
 
 ## 2. Locked decisions

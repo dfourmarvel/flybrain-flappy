@@ -165,7 +165,7 @@ noise floor for this data; record the count at thresholds 3/5/10 in `docs/DATA.m
 
 Signing: each edge's sign comes from the **presynaptic** neuron's predicted neurotransmitter
 (Eckstein et al. 2024): acetylcholine → excitatory (+1); GABA and glutamate → inhibitory (−1);
-dopamine, serotonin, octopamine → **excluded from the fast simulation** and logged as a count.
+histamine → inhibitory (−1; fly histamine receptors are chloride channels, none expected in this circuit); dopamine, serotonin, octopamine → **excluded from the fast simulation** and logged as a count. Sub-circuit coverage is measured in `docs/DATA.md` (13 of 2,493 neurons unclear).
 Unknown/low-confidence predictions → excluded and counted.
 
 Output: `data/derived/subcircuit.npz` (scipy CSR sparse signed weight matrix) plus
@@ -190,6 +190,28 @@ NumPy versions `vshapenko/flypoke` and `cfdgasman/flybrain-explorer`.
 **Every neuron constant — resting potential, threshold, membrane time constant, refractory period,
 synaptic time constant, per-synapse voltage step — is copied from the paper/repo and cited inline.
 Inventing a value is a spec violation.** Record the full parameter table in `docs/DATA.md`.
+
+**Verified 2026-09-22 (lead spike) — `philshiu/Drosophila_brain_model/model.py`, MIT licence.**
+Use exactly these; cite that file in a comment next to them:
+
+| Param | Value | Meaning |
+|---|---|---|
+| `v_0` | −52 mV | resting potential |
+| `v_rst` | −52 mV | reset after spike |
+| `v_th` | −45 mV | spike threshold (`v > v_th`) |
+| `t_mbr` | 20 ms | membrane time constant |
+| `tau` | 5 ms | synaptic conductance decay |
+| `t_rfc` | 2.2 ms | refractory period (v and g frozen while refractory) |
+| `t_dly` | 1.8 ms | synaptic delay |
+| `w_syn` | 0.275 mV | voltage step per synapse |
+| `dt` | 0.1 ms | Brian2 default (no clock override in their code) |
+
+Equations: `dv/dt = (v_0 − v + g) / t_mbr`, `dg/dt = −g / tau`. On a presynaptic spike, after
+`t_dly`, each postsynaptic `g += sign × synapse_count × w_syn`. On spike: `v = v_rst`, `g = 0`.
+Their input drive is Poisson spike trains with weight `w_syn × 250` (`f_poi`), which our Step 5
+input mapping replaces with a rate-coded Poisson drive onto the input seeds using the same weight.
+If `dt` is raised for speed (performance gate), keep `t_dly` as a whole number of steps and record
+the change.
 
 Required design: the state update is a **batched** sparse mat-vec, shape `(n_candidates, n_neurons)`,
 so an entire CMA-ES population steps in one call. This is what makes Step 6 affordable.

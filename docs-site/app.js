@@ -103,6 +103,13 @@ function writeBestScore(n) {
 }
 
 async function main() {
+  // The replay is ~0.6 MB: until it arrives, every control is inert, so disable them rather
+  // than silently swallowing clicks (a click on "Play" before load did nothing at all).
+  const allControls = document.querySelectorAll("button");
+  allControls.forEach((b) => { b.disabled = true; });
+  const playLabel = els.btnPlayPause.textContent;
+  els.btnPlayPause.textContent = "Loading…";
+
   const res = await fetch("replay/best.json");
   data = await res.json();
   config = data.config;
@@ -127,6 +134,9 @@ async function main() {
   drawRasterStatic();
   drawGfStatic();
   updateBestScoreLine();
+
+  allControls.forEach((b) => { b.disabled = false; });
+  els.btnPlayPause.textContent = playLabel;
 
   setMode("watch");
   wireControls();
@@ -246,18 +256,20 @@ function drawGame(frameNumber, birdY, birdColor, ghostY) {
   const h = els.canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  // pipes
-  ctx.fillStyle = getCss("--panel-2");
-  ctx.strokeStyle = getCss("--border");
+  // pipes: solid body with a bright gap-facing edge, so the gap reads at a glance
+  const body = "#233348";
+  const edge = "#6E93B5";
   for (const pipe of level) {
     const x = pipeXAtFrame(pipe, frameNumber);
     if (x + config.pipe_width < 0 || x > w) continue;
     const gapTop = pipe.gap_centre - config.gap_height / 2;
     const gapBottom = pipe.gap_centre + config.gap_height / 2;
+    ctx.fillStyle = body;
     ctx.fillRect(x, 0, config.pipe_width, gapTop);
-    ctx.strokeRect(x, 0, config.pipe_width, gapTop);
     ctx.fillRect(x, gapBottom, config.pipe_width, h - gapBottom);
-    ctx.strokeRect(x, gapBottom, config.pipe_width, h - gapBottom);
+    ctx.fillStyle = edge;
+    ctx.fillRect(x, gapTop - 6, config.pipe_width, 6);
+    ctx.fillRect(x, gapBottom, config.pipe_width, 6);
   }
 
   // ghost bird (fly, in play mode)

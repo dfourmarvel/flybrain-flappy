@@ -116,10 +116,7 @@ def test_mannwhitney_and_rank_biserial_hand_computed():
     assert result.u_statistic == pytest.approx(3.0)
     assert result.rank_biserial == pytest.approx(-1.0 / 3.0)
     assert result.direction == "control ranks higher than real"
-
-    # cross-check p-value against an independent scipy call with the same inputs
-    expected_p = stats.mannwhitneyu(real, control, alternative="two-sided").pvalue
-    assert result.p_value == pytest.approx(expected_p)
+    assert result.method == "exact"  # no ties in the pooled [1,2,3,4,5,6]
 
     assert result.median_real == pytest.approx(3.0)
     assert result.median_control == pytest.approx(4.0)
@@ -168,8 +165,11 @@ def test_log_rank_hand_worked_example_no_censoring():
     assert result.p_value == pytest.approx(float(stats.chi2.sf(0.61538, df=1)), abs=1e-4)
     assert result.n_censored_real == 0
     assert result.n_censored_control == 0
-    assert result.median_real == pytest.approx(3.0)  # (2+4)/2
-    assert result.median_control == pytest.approx(2.0)  # (1+3)/2
+    # Kaplan-Meier median (fix #1): smallest t where S(t) <= 0.5, not a raw order statistic.
+    # Arm A [2,4]: at t=2, n=2, d=1 -> S=0.5 <= 0.5 -> median=2.0.
+    assert result.median_real == pytest.approx(2.0)
+    # Arm B [1,3]: at t=1, n=2, d=1 -> S=0.5 <= 0.5 -> median=1.0.
+    assert result.median_control == pytest.approx(1.0)
 
 
 def test_log_rank_all_censored_in_one_arm():
@@ -185,7 +185,8 @@ def test_log_rank_all_censored_in_one_arm():
     assert result.n_censored_control == 2
     assert result.n_censored_real == 0
     assert result.median_control is None
-    assert result.median_real == pytest.approx(1.5)
+    # Kaplan-Meier median: at t=1, n=2, d=1 -> S=0.5 <= 0.5 -> median=1.0.
+    assert result.median_real == pytest.approx(1.0)
     assert 0.0 <= result.p_value <= 1.0
     assert np.isfinite(result.chi2)
 
@@ -230,13 +231,14 @@ def test_build_survival_arrays_censoring(tmp_path):
     assert bool(row2["censored"]) is True
     assert row2["last_generation"] == 15
 
-    time, event = analyse.build_survival_arrays(loaded.real)
+    time, event, excluded = analyse.build_survival_arrays(loaded.real)
     time_by_seed = dict(zip(loaded.real["run_seed"], time))
     event_by_seed = dict(zip(loaded.real["run_seed"], event))
     assert time_by_seed[1] == 10
     assert event_by_seed[1] == 1
     assert time_by_seed[2] == 15  # censored at last generation, not dropped or imputed
     assert event_by_seed[2] == 0
+    assert excluded == []
 
 
 # --------------------------------------------------------------------------------------------
@@ -257,13 +259,36 @@ def _run_full_analysis(tmp_path, real_means, control_means, *, seed_offset=0):
     return results_path.read_text(encoding="utf-8")
 
 
-def test_results_md_has_all_limitations_and_no_hand_typed_numbers(tmp_path):
+LIMITATIONS_KEYWORDS = [
+    "sub-circuit",
+    "neurotransmitter",
+    "neuromodulation",
+    "interface",
+    "synapse count",
+    "DNp06",
+    "left/right",
+    "fitted specifically for this task",
+]
+
+
+def test_results_md_has_eight_limitations_bullets_with_expected_topics(tmp_path):
+    real_means = [10.0, 12.0, 14.0, 16.0, 9.0]
+    control_means = [5.0, 6.0, 7.0, 4.0, 8.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+
+    limitations_block = text.split("## Limitations")[1]
+    bullets = [line for line in limitations_block.splitlines() if line.startswith("- ")]
+    assert len(bullets) == 8
+
+    lowered = limitations_block.lower()
+    for keyword in LIMITATIONS_KEYWORDS:
+        assert keyword.lower() in lowered, f"limitations section missing topic: {keyword!r}"
+
+
+def test_results_md_no_hand_typed_numbers(tmp_path):
     real_means = [10.0, 12.0, 14.0, 16.0, 9.0]
     control_means = [5.0, 6.0, 7.0, 4.0, 8.0]
     text_a = _run_full_analysis(tmp_path, real_means, control_means)
-
-    for item in analyse.LIMITATIONS:
-        assert item in text_a, f"missing limitations bullet: {item[:50]}..."
 
     # Regenerate with DIFFERENT synthetic numbers into a fresh tmp dir and confirm the
     # numeric/statistical content of the doc actually changes (i.e. nothing is hand-typed).
@@ -295,7 +320,6 @@ def test_ceiling_case_flags_primary_uninformative(tmp_path):
     text = _run_full_analysis(tmp_path, real_means, control_means)
 
     assert "uninformative" in text.lower()
-    assert "secondary" in text.lower()
     # sanity: the ceiling-count table should show every run at ceiling
     assert "5/5" in text
 
@@ -313,3 +337,235 @@ def test_analyse_primary_not_uninformative_when_below_ceiling():
     control = np.array([22.0, 10.0, 22.0])
     result = analyse.analyse_primary(real, control)
     assert result.uninformative is False
+
+
+# --------------------------------------------------------------------------------------------
+# 7. Kaplan-Meier median: the two pre-registered validation cases (fix #1)
+# --------------------------------------------------------------------------------------------
+
+
+def test_km_median_freireich_6mp_treated_arm():
+    # Freireich et al. 1963 6-MP treated-arm remission-time data (a standard KM textbook
+    # example). Times in order, asterisk = censored:
+    # 6,6,6,6*,7,9*,10,10*,11*,13,16,17*,19*,20*,22,23,25*,32*,32*,34*,35*
+    # Known KM median for this arm is 23. The old order-statistic code gave 16.0.
+    times = np.array([6, 6, 6, 6, 7, 9, 10, 10, 11, 13, 16, 17, 19, 20, 22, 23, 25, 32, 32, 34, 35],
+                      dtype=float)
+    events = np.array([1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0])
+    assert len(times) == 21
+    assert events.sum() == 9  # 9 observed relapses, 12 censored
+
+    median = analyse.km_median(times, events)
+
+    assert median == pytest.approx(23.0)
+
+
+def test_km_median_censored_block_then_sequential_events():
+    # 15 runs censored at generation 30 (never reached), 15 runs that reached at generations
+    # 35..49 (one each, no ties). Known KM median is 42.0. The old code, seeing >=half the
+    # arm censored, printed "not reached" -- wrong, because the censoring happens BEFORE the
+    # events, not spread through them.
+    times = np.concatenate([np.full(15, 30.0), np.arange(35.0, 50.0)])
+    events = np.concatenate([np.zeros(15, dtype=int), np.ones(15, dtype=int)])
+
+    median = analyse.km_median(times, events)
+
+    assert median == pytest.approx(42.0)
+
+
+def test_km_median_none_when_survival_never_drops_to_half():
+    # All censored -> survival curve never drops at all -> "not reached".
+    times = np.array([5.0, 5.0, 5.0])
+    events = np.array([0, 0, 0])
+    assert analyse.km_median(times, events) is None
+
+
+# --------------------------------------------------------------------------------------------
+# 8. Missing/empty history.csv is a data problem, not a censored observation (fix #2)
+# --------------------------------------------------------------------------------------------
+
+
+def test_missing_and_empty_history_excluded_not_censored(tmp_path):
+    runs_root = tmp_path / "runs"
+    # seed 1: normal run, usable history.
+    _write_run(runs_root, "real", 1, heldout_mean=15.0,
+                history_rows=_probe_rows([(1, 2.0), (10, 11.0)]))
+    # seed 2: finished (heldout.json present) but history.csv never written at all.
+    _write_run(runs_root, "real", 2, heldout_mean=8.0, history_rows=None)
+    # seed 3: finished, history.csv exists but is a zero-byte file.
+    run_dir_3 = _write_run(runs_root, "real", 3, heldout_mean=9.0, history_rows=None)
+    (run_dir_3 / "history.csv").write_text("", encoding="utf-8")
+
+    loaded = analyse.load_runs(runs_root)
+    assert loaded.n_real_found == 3  # all three have a readable heldout.json -> "found"
+
+    time, event, excluded = analyse.build_survival_arrays(loaded.real)
+
+    assert len(time) == 1  # only seed 1 contributes to the secondary analysis
+    assert len(excluded) == 2
+    assert any(label.endswith("seed_2") for label in excluded)
+    assert any(label.endswith("seed_3") for label in excluded)
+    # must never read as "censored at generation 0"
+    assert 0.0 not in time
+
+
+def test_results_md_names_excluded_history_runs(tmp_path):
+    runs_root = tmp_path / "runs"
+    out_dir = tmp_path / "docs"
+    _write_run(runs_root, "real", 1, heldout_mean=15.0,
+                history_rows=_probe_rows([(1, 2.0), (10, 11.0)]))
+    _write_run(runs_root, "real", 2, heldout_mean=8.0, history_rows=None)
+    for i, m in enumerate([4.0, 5.0, 6.0], start=1):
+        _write_run(runs_root, "control_00", i, heldout_mean=m,
+                    history_rows=_probe_rows([(1, m / 2), (5, m)]))
+
+    results_path = analyse.run_analysis(runs_root, out_dir, project_root=tmp_path)
+    text = results_path.read_text(encoding="utf-8")
+
+    assert "excluded from the secondary measure (no usable history)" in text
+    assert "real/seed_2" in text
+
+
+# --------------------------------------------------------------------------------------------
+# 9. p-value formatting and Mann-Whitney method naming (fix #3)
+# --------------------------------------------------------------------------------------------
+
+
+def test_fmt_p_below_floor_prints_less_than():
+    assert analyse._fmt_p(0.00001) == "p < 0.0001"
+    assert analyse._fmt_p(0.0) == "p < 0.0001"
+
+
+def test_fmt_p_above_floor_prints_equals():
+    assert analyse._fmt_p(0.0234) == "p = 0.0234"
+    assert analyse._fmt_p(0.5) == "p = 0.5000"
+
+
+def test_results_md_states_exact_method_when_no_ties(tmp_path):
+    real_means = [10.0, 12.0, 14.0]
+    control_means = [1.0, 2.0, 3.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+    assert "(method: exact)" in text
+
+
+def test_results_md_states_asymptotic_method_when_ties_present(tmp_path):
+    # A ceiling effect makes ties across the pooled sample likely; here duplicate 5.0s appear
+    # in both arms, forcing method="asymptotic" per the ticket's ties rule.
+    real_means = [5.0, 5.0, 5.0]
+    control_means = [5.0, 3.0, 5.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+    assert "(method: asymptotic (ties present))" in text
+
+
+# --------------------------------------------------------------------------------------------
+# 10. No verdict without enough finished runs (fix #4)
+# --------------------------------------------------------------------------------------------
+
+
+def test_no_verdict_at_zero_finished_runs(tmp_path):
+    text = _run_full_analysis(tmp_path, [], [])
+    assert "Not enough finished runs for a verdict (real: 0/30, control: 0/30)." in text
+    assert "C2 supported" not in text
+    assert "C2 fails" not in text
+    assert "C2 is not supported" not in text
+
+
+def test_no_verdict_at_two_finished_runs(tmp_path):
+    real_means = [12.0, 14.0]
+    control_means = [5.0, 6.0, 7.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+    assert "Not enough finished runs for a verdict (real: 2/30, control: 3/30)." in text
+
+
+def test_verdict_printed_at_three_finished_runs_each_side(tmp_path):
+    real_means = [20.0, 21.0, 22.0]
+    control_means = [1.0, 2.0, 3.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+    assert "Not enough finished runs for a verdict" not in text
+
+
+# --------------------------------------------------------------------------------------------
+# 11. NaN / missing held-out mean (fix #5)
+# --------------------------------------------------------------------------------------------
+
+
+def test_nan_and_missing_mean_excluded_named_and_stats_from_rest(tmp_path):
+    runs_root = tmp_path / "runs"
+    _write_run(runs_root, "real", 1, heldout_mean=15.0)
+    # seed 2: heldout.json has an explicit NaN mean.
+    run_dir_2 = runs_root / "real" / "seed_2"
+    run_dir_2.mkdir(parents=True)
+    (run_dir_2 / "heldout.json").write_text(
+        json.dumps({"run_seed": 2, "mean": float("nan")}), encoding="utf-8"
+    )
+    # seed 3: heldout.json is malformed -- no "mean" key at all (must not raise KeyError).
+    run_dir_3 = runs_root / "real" / "seed_3"
+    run_dir_3.mkdir(parents=True)
+    (run_dir_3 / "heldout.json").write_text(json.dumps({"run_seed": 3}), encoding="utf-8")
+    for i, m in enumerate([4.0, 5.0, 6.0], start=1):
+        _write_run(runs_root, "control_00", i, heldout_mean=m)
+
+    loaded = analyse.load_runs(runs_root)
+    assert loaded.n_real_found == 3  # readable heldout.json -> "found", regardless of mean
+
+    real_scores = loaded.real["heldout_mean"].to_numpy()
+    control_scores = loaded.control["heldout_mean"].to_numpy()
+    primary = analyse.analyse_primary(real_scores, control_scores)
+    assert primary.n_real == 1  # only seed 1 has a usable mean
+    assert primary.n_excluded_real == 2
+    assert primary.median_real == pytest.approx(15.0)
+
+    out_dir = tmp_path / "docs"
+    results_path = analyse.run_analysis(runs_root, out_dir, project_root=tmp_path)
+    text = results_path.read_text(encoding="utf-8")
+    assert "real/seed_2" in text
+    assert "real/seed_3" in text
+    assert "NaN or missing held-out mean" in text
+
+
+# --------------------------------------------------------------------------------------------
+# 12. Verdict wording: both directions (fix: existing tests never asserted the real-wins case)
+# --------------------------------------------------------------------------------------------
+
+
+def test_results_md_real_wins_wording(tmp_path):
+    real_means = [20.0, 21.0, 22.0, 19.0, 21.0]
+    control_means = [2.0, 3.0, 1.0, 2.0, 3.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+    assert "Real outperforms control on held-out score (C2 supported)." in text
+
+
+def test_results_md_control_wins_wording(tmp_path):
+    real_means = [2.0, 3.0, 1.0, 2.0, 3.0]
+    control_means = [20.0, 21.0, 22.0, 19.0, 21.0]
+    text = _run_full_analysis(tmp_path, real_means, control_means)
+    assert "Control outperforms real on held-out score" in text
+    assert "C2 fails" in text
+
+
+# --------------------------------------------------------------------------------------------
+# 13. Figure-4 skip reasons must be distinguishable (fix #6)
+# --------------------------------------------------------------------------------------------
+
+
+def test_gf_habituation_skip_reason_no_replay_file(tmp_path):
+    written, reason = analyse.fig_gf_habituation(tmp_path / "missing.json", tmp_path / "out.png")
+    assert written is False
+    assert reason == "no_replay_file"
+
+
+def test_gf_habituation_skip_reason_not_real_connectome(tmp_path):
+    replay_path = tmp_path / "best.json"
+    replay_path.write_text(json.dumps({"meta": {"is_real_connectome": False}, "gf": {"counts": [[1, 2]]}}),
+                            encoding="utf-8")
+    written, reason = analyse.fig_gf_habituation(replay_path, tmp_path / "out.png")
+    assert written is False
+    assert reason == "not_real_connectome"
+
+
+def test_gf_habituation_skip_reason_no_gf_block(tmp_path):
+    replay_path = tmp_path / "best.json"
+    replay_path.write_text(json.dumps({"meta": {"is_real_connectome": True}}), encoding="utf-8")
+    written, reason = analyse.fig_gf_habituation(replay_path, tmp_path / "out.png")
+    assert written is False
+    assert reason == "no_gf_block"

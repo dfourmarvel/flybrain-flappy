@@ -357,14 +357,28 @@ per frame for up to ~200 neurons, chosen as the input seeds, output seeds, and t
 interneurons). Include the metadata block: connectome version, neuron count, edge count, seed,
 held-out score. Cap the file at **2 MB**; downsample activity further if needed.
 
+**Amended 2026-09-22 (Daniel):** the demo also lets a human play, to compare their score with the
+fly's. Python's RNG cannot be reproduced in JavaScript, so the replay JSON must carry the LEVEL
+itself — the ordered list of pipe (x_at_frame_0, gap_centre) plus every `GameConfig` constant —
+so the browser replays the fly and lets the human play **the identical level**, not a lookalike.
+
 - [ ] `docs-site/replay/best.json` exists, is under 2 MB, and validates against a documented schema in the same file's `meta` block.
 - [ ] The recorded score matches the score Step 6 reported for that seed.
+- [ ] The JSON contains the full level (pipe list + GameConfig constants), enough to reproduce the game in JS without any RNG.
 
 ### Step 10 — Web demo (`docs-site/`)
 
 Single static page, no build step. Canvas replay of `best.json`: the game on the left, a live activity
 panel on the right showing the input neurons, the descending neurons and a flap indicator, all driven
-from the recorded data. Controls: play/pause, speed, restart. A short explainer above the fold: what
+from the recorded data. Controls: play/pause, speed, restart.
+
+**Human-vs-fly mode (added 2026-09-22 at Daniel's request).** A "Play it yourself" mode runs the
+SAME level from the JSON in a JS reimplementation of `game.py` — every constant read from the JSON,
+never hard-coded in the page — with space/click/tap to flap. The fly's run plays alongside as a
+ghost, and the result line reads "You: N · Fly: M". A JS-vs-Python parity check is required: the
+page must reproduce the fly's recorded frames exactly when fed the fly's recorded flap sequence,
+and the page must say so (a small "physics verified against the Python engine" note). Human scores
+are never stored or sent anywhere — no backend, no leaderboard (PLAN section 3). A short explainer above the fold: what
 the connectome is, what is frozen, what was fitted, and a prominent line stating this is a **replay of
 a real simulated run**, not a live simulation.
 

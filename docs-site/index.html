@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flybrain-flappy — a real fly brain plays Flappy Bird</title>
+<meta name="description" content="A recorded replay of a fruit-fly connectome sub-circuit playing Flappy Bird, plus a mode to play the same level yourself.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <h1>flybrain-flappy</h1>
+  <p class="tagline">A real fruit-fly brain sub-circuit (frozen connectome, fitted interface) plays Flappy Bird.</p>
+  <p class="replay-notice">
+    <strong>This is a replay of one real recorded run</strong> — not a live simulation. The brain
+    ran once, offline, in Python; the numbers below and the "Watch the fly" panel show exactly
+    what happened that run, frame by frame.
+  </p>
+  <p class="placeholder-banner" id="placeholder-banner" role="alert" hidden></p>
+</header>
+
+<main>
+
+  <section class="stage" aria-label="Game and neural activity">
+    <div class="stage-grid">
+
+      <div class="canvas-wrap">
+        <canvas id="game-canvas" width="400" height="512"
+          role="img"
+          aria-label="Flappy Bird game canvas. A bird moves through a column of pipes; a live text score is below."
+        >
+          Your browser does not support canvas. The recorded episode's final score and neuron
+          activity are described in the text sections on this page.
+        </canvas>
+
+        <div class="score-line" id="score-line" aria-live="polite">
+          <span class="score-label">Fly score:</span>
+          <span class="score-value" id="fly-score-text">0</span>
+        </div>
+        <div class="score-line human-score-line" id="human-score-line" aria-live="polite" hidden>
+          <span class="score-label">Your score:</span>
+          <span class="score-value" id="human-score-text">0</span>
+        </div>
+        <p class="game-over-line" id="game-over-line" aria-live="polite" hidden></p>
+      </div>
+
+      <aside class="activity-panel" aria-label="Neuron activity">
+        <h2>Neural activity <span class="muted">(recorded, same run)</span></h2>
+
+        <div class="activity-block" id="input-block" hidden>
+          <h3 id="input-heading">Input neurons (looming detection)</h3>
+          <p class="hint">
+            One column per frame, one row per input-seed neuron (LC4 / LPLC2 looming detectors).
+            Brighter = more spikes that frame. This is the visual input arriving, before the
+            escape decision below.
+          </p>
+          <div class="raster-wrap">
+            <canvas id="input-raster-canvas" role="img" width="600" height="80" aria-labelledby="input-heading"></canvas>
+            <div class="playhead" id="input-playhead" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div class="activity-block">
+          <h3 id="dn-heading">Descending output neurons</h3>
+          <p class="hint">The output-seed neurons the fitted interface reads to decide flap/no-flap.</p>
+          <div class="dn-bars" id="dn-bars" aria-labelledby="dn-heading"></div>
+        </div>
+
+        <div class="activity-block">
+          <h3 id="raster-heading">Interneurons</h3>
+          <p class="hint">One column per frame. Brighter = more spikes that frame.</p>
+          <div class="raster-wrap">
+            <canvas id="raster-canvas" role="img" width="600" height="120" aria-labelledby="raster-heading"></canvas>
+            <div class="playhead" id="raster-playhead" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div class="activity-block">
+          <h3 id="gf-heading">Giant fiber (DNp01)</h3>
+          <p class="hint">The escape-triggering descending neuron, R and L. Isolated because it can habituate.</p>
+          <div class="raster-wrap gf-wrap">
+            <canvas id="gf-canvas" role="img" width="600" height="60" aria-labelledby="gf-heading"></canvas>
+            <div class="playhead" id="gf-playhead" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <div class="flap-row">
+          <span>Flap this frame:</span>
+          <span class="flap-dot" id="flap-dot" aria-hidden="true"></span>
+          <span class="visually-hidden" id="flap-text">no</span>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <section class="controls" aria-label="Controls">
+
+    <div class="mode-switch" role="group" aria-label="Mode">
+      <button type="button" id="mode-watch" class="mode-btn" aria-pressed="true">Watch the fly</button>
+      <button type="button" id="mode-play" class="mode-btn" aria-pressed="false">Play it yourself</button>
+    </div>
+
+    <div class="transport" id="watch-controls">
+      <button type="button" id="btn-play-pause">Pause</button>
+      <button type="button" id="btn-restart">Restart</button>
+      <div class="speed-group" role="group" aria-label="Playback speed">
+        <button type="button" class="speed-btn" data-speed="0.5">0.5x</button>
+        <button type="button" class="speed-btn is-active" data-speed="1" aria-pressed="true">1x</button>
+        <button type="button" class="speed-btn" data-speed="2">2x</button>
+      </div>
+    </div>
+
+    <div class="transport" id="play-controls" hidden>
+      <button type="button" id="btn-flap">Flap (Space / tap)</button>
+      <button type="button" id="btn-play-restart">Restart</button>
+      <p class="hint">Space, click, or tap the canvas to flap. The translucent bird is the fly's recorded ghost.</p>
+      <p class="hint" id="best-score-line"></p>
+    </div>
+
+  </section>
+
+  <section class="explainer">
+    <h2>How this works</h2>
+    <p id="connectome-explainer">
+      The <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">connectome</a> —
+      the wiring diagram of a real fruit fly's brain, down to individual synapses — is never
+      changed. A small sub-circuit around the fly's visual looming-detection and escape pathways
+      runs exactly as measured. The only thing that was <strong>fitted</strong> to this game is a
+      thin interface: how the game's pixels turn into simulated visual input, and how a
+      spike-count readout turns into a flap decision. The brain itself did not learn Flappy Bird —
+      the interface around it did.
+    </p>
+    <p>
+      <strong>Looming neurons</strong> respond to an object growing larger in the visual field —
+      here, an oncoming pipe. <strong>Escape neurons</strong>, including the giant fiber
+      <span class="mono">DNp01</span>, are the fly's fast last-resort motor command; in this demo
+      that command is read out as the flap decision.
+    </p>
+    <dl class="meta-grid" id="meta-grid" aria-label="Run metadata"></dl>
+  </section>
+
+  <p class="parity-note">
+    Physics verified against the Python engine: this page's game physics were checked frame-by-frame
+    against the recorded Python run (<span class="mono">node docs-site/parity.test.mjs</span>) and match exactly.
+  </p>
+
+</main>
+
+<footer class="site-footer">
+  <p>
+    <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">Source on GitHub</a>
+  </p>
+  <p class="data-credit" id="data-credit-line">
+    Connectome data: MaleCNS v1.0, Janelia / Google, CC-BY. See
+    <a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/DATA.md" rel="noopener">docs/DATA.md</a>.
+  </p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -101,7 +101,7 @@ def _run_kernel(
     ip, ix, dat, rate, seed,
     step_global0, n_steps, dt,
     v_0, v_th, e_g, e_m, g_coef, poisson_step,
-    i_ext, D, R, record_mask, spiked,
+    i_ext, D, R, record_mask, spiked, active,
 ):
     """The one simulation kernel: advances (v, g, rf, buf) by n_steps and accumulates
     spike_count in place. Also records (step, candidate, neuron) spike events for any
@@ -123,6 +123,8 @@ def _run_kernel(
         slot = step_global % D
         # pass 1: arrival + Poisson drive + integrate/refractory -> latch spikes, no propagation yet
         for b in range(B):
+            if active[b] == 0:      # candidate finished its episode: freeze it, save the work
+                continue
             sb = seed[b]
             for i in range(N):
                 # (1) delayed synaptic input arrives
@@ -162,6 +164,8 @@ def _run_kernel(
                         rec_n.append(i)
         # pass 2: propagate this step's spikes into the delay buffer (arrives D steps later)
         for b in range(B):
+            if active[b] == 0:
+                continue
             for i in range(N):
                 if spiked[b, i]:
                     spiked[b, i] = False
@@ -213,25 +217,29 @@ class Simulator:
         self._spiked = np.zeros((self.B, self.N), dtype=np.bool_)  # reusable scratch, pass 2
         self.step_global = 0
 
-    def _run(self, n_steps: int, rates, record_mask):
+    def _run(self, n_steps: int, rates, record_mask, active=None):
         rates = np.ascontiguousarray(rates, dtype=np.float32)
         assert rates.shape == (self.B, self.N)
+        # active=None means every candidate runs. A False entry freezes that candidate's state
+        # and skips its work entirely: results for the others are unchanged (per-candidate RNG).
+        active = (np.ones(self.B, dtype=np.int8) if active is None
+                  else np.ascontiguousarray(active, dtype=np.int8))
         spike_count = np.zeros((self.B, self.N), dtype=np.int32)
         rec_step, rec_b, rec_n = _run_kernel(
             self.v, self.g, self.rf, self.buf, spike_count,
             self.ip, self.ix, self.dat, rates, self.seeds,
             self.step_global, n_steps, self.dt,
             V_0, V_TH, self.e_g, self.e_m, self.g_coef, POISSON_STEP,
-            self.i_ext, self.D, self.R, record_mask, self._spiked,
+            self.i_ext, self.D, self.R, record_mask, self._spiked, active,
         )
         self.step_global += n_steps
         return spike_count, rec_step, rec_b, rec_n
 
-    def run(self, n_steps: int, rates) -> np.ndarray:
+    def run(self, n_steps: int, rates, active=None) -> np.ndarray:
         """Advance n_steps with the given (B, N) float32 Hz rate array. Returns int32
-        spike counts (B, N) for this window."""
+        spike counts (B, N) for this window. `active` optionally freezes finished candidates."""
         no_record = np.zeros(self.N, dtype=np.bool_)
-        spike_count, _, _, _ = self._run(n_steps, rates, no_record)
+        spike_count, _, _, _ = self._run(n_steps, rates, no_record, active)
         return spike_count
 
     def run_record(self, n_steps: int, rates, record_idx) -> list[tuple[int, int, int]]:

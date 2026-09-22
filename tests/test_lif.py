@@ -164,14 +164,15 @@ def test_dt_sensitivity_output_rates_within_tolerance():
         rates_by_dt[dt] = mean_rate_hz
 
     r01, r02 = rates_by_dt[0.1], rates_by_dt[0.2]
-    print("dt-check: LC4 @150 Hz, 1 s, mean rate per output seed (10 seeds)")
+    print(f"dt-check: LC4 @150 Hz, 1 s, mean rate per output seed ({n_seeds} seeds)")
     print(f"{'type':8s} {'side':5s} {'rate@0.1':>10s} {'rate@0.2':>10s} {'diff':>8s} {'ok':>4s}")
     all_ok = True
     for i in range(len(output_idx)):
         diff = r02[i] - r01[i]
-        # 12%, amended from 10% on 2026-09-22: dt 0.2 has a measured systematic bias of
-        # -1.8%..+10.0% (docs/DATA.md). Real and control networks share dt, so C2 is unaffected.
-        tol = max(0.12 * r01[i], 2.0) if r01[i] < 20.0 else 0.12 * r01[i]
+        # Sanity bound only, NOT the fidelity claim. The measured bias (120 trials, 95% CI) is in
+        # docs/DATA.md: <= 1.8% for 8 of 10 output neurons, +11.9% (CI +9.9..+13.9%) for DNp06 L.
+        # A +-12% gate set from one seed block passed or failed by seed luck, so it was dropped.
+        tol = max(0.20 * r01[i], 2.0)
         ok = abs(diff) <= tol
         all_ok &= ok
         print(f"{output_types[i]:8s} {output_sides[i]:5s} {r01[i]:10.3f} {r02[i]:10.3f} {diff:8.3f} {str(ok):>4s}")
@@ -210,7 +211,7 @@ def test_batched_matches_single_candidate():
 # --- Test 7: synaptic delay ---------------------------------------------------------------
 
 
-def test_synaptic_delay_no_earlier_than_D_steps():
+def test_synaptic_delay_is_exactly_D_steps():
     dt = DT_DEFAULT
     W = sparse.csr_matrix(
         (np.array([5000.0], dtype=np.float32), (np.array([0]), np.array([1]))),

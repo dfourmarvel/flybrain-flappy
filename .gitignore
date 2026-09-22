@@ -1,6 +1,8 @@
 .venv/
 data/raw/
-data/derived/
+data/derived/*
+!data/derived/subcircuit.npz
+!data/derived/neurons.parquet
 runs/
 __pycache__/
 *.pyc

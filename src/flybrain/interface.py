@@ -37,7 +37,8 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 def _logit(y: np.ndarray) -> np.ndarray:
-    return np.log(y / (1.0 - y))
+    with np.errstate(divide='ignore'):
+        return np.log(y / (1.0 - y))
 
 
 # --- Parameter vector <-> named parameters -----------------------------------------------
@@ -86,6 +87,9 @@ def to_vector(p: InterfaceParams) -> np.ndarray:
     x[4:14] = np.asarray(p.w, dtype=np.float64) * 100.0
     x[14] = _logit(np.array((p.tau_ms - 5.0) / 195.0))
     x[15] = p.bias
+    # CMA-ES can propose |x| large enough to saturate the sigmoids; clip so the inverse stays
+    # finite (from_vector(to_vector(p)) is then exact to float tolerance, not bit-identical).
+    x[:] = np.clip(x, -700.0, 700.0)
     return x
 
 
@@ -246,7 +250,8 @@ def play_batch(
     assert abs(steps_per_frame_exact - steps_per_frame) < 1e-9, (
         f"frame_ms/dt must be a whole number of steps, got {steps_per_frame_exact}"
     )
-    assert steps_per_frame == 125, f"expected 125 steps/frame, got {steps_per_frame}"
+    assert abs(config.frame_ms / sim.dt - steps_per_frame) < 1e-9, (
+        f"frame_ms {config.frame_ms} is not a whole number of {sim.dt} ms steps")
 
     games = [Game(config, seed=game_seed) for _ in range(B)]
     obs_list = [g.reset() for g in games]
@@ -267,7 +272,9 @@ def play_batch(
         rates = obs_batch_rates(G, lam, kappa, r0, obs_list, config, side_L, side_R)
         rates[~alive] = 0.0
 
-        counts = sim.run(steps_per_frame, rates)  # (B, N) int32; dead candidates' brains still run
+        # Freeze finished candidates: their results are already recorded, and at population 16
+        # a single long survivor would otherwise pay for 15 dead brains every frame.
+        counts = sim.run(steps_per_frame, rates, active=alive)
         out_counts = counts[:, output_idx].astype(np.float64)
         trace = update_trace(trace, out_counts, tau_ms, config.frame_ms)
         flap = flap_decision(trace, w_readout, bias)

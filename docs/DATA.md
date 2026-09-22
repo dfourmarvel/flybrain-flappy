@@ -94,7 +94,7 @@ as the key columns — all present as listed above.
 | celltype_predicted_nt_confidence | float64 |
 | consensus_nt | object |
 
-Note: one row per body (`body` is unique, 1,835,518 rows), including unannotated fragments �
+Note: one row per body (`body` is unique, 1,835,518 rows), including unannotated fragments —
 which is why `consensus_nt` is `unclear` for 1,671,117 bodies overall. Every `body_pre` in the
 weights file is present here. **Within the Step 2 sub-circuit (weight >= 5, 3 hops; 2,493 neurons)
 coverage is near-complete:** consensus_nt = acetylcholine 1,630, GABA 642, glutamate 201,
@@ -139,7 +139,68 @@ Actual column names differ from the `pre`/`post` guess in `docs/PLAN.md` Step 1 
 
 ## Sub-circuit (Step 2)
 
-_(to be filled in Step 2)_
+Seeds (from `body-annotations` `type` column, both hemispheres): input seeds `LC4` + `LPLC2` =
+311 neurons; output seeds `DNp01`/`DNp02`/`DNp04`/`DNp06`/`DNp11` = 10 neurons.
+
+Method: filter edges to `weight >= threshold`; build the directed graph over every body id
+appearing in those edges; forward BFS from the input seeds gives `d_f`, backward BFS (on the
+transposed graph) from the output seeds gives `d_b`; keep neurons with `d_f + d_b <= hops`; the
+network is the induced subgraph (all threshold-passing edges with both endpoints kept).
+Self-loops (101 rows / 54 at weight>=3 in the raw weights table) are dropped before graph
+construction. None of them involve neurons in the chosen th5/hops3 network, so the drop
+removes no connection from it (verified: 2,493 neurons / 94,702 edges with or without the drop).
+All nine rows below reached all 10 output seeds. Produced by
+`.venv/Scripts/python -m flybrain.subcircuit --sweep`:
+
+| threshold | hops | neurons | edges | all 10 outputs reached |
+|---|---|---|---|---|
+| 3 | 2 | 804 | 41,488 | yes |
+| 3 | 3 | 4,014 | 207,837 | yes |
+| 3 | 4 | 52,395 | 3,643,894 | yes |
+| 5 | 2 | 596 | 19,556 | yes |
+| 5 | 3 | 2,493 | 94,702 | yes |
+| 5 | 4 | 25,110 | 1,180,825 | yes |
+| 10 | 2 | 451 | 6,458 | yes |
+| 10 | 3 | 1,531 | 31,457 | yes |
+| 10 | 4 | 8,759 | 244,337 | yes |
+
+**Chosen parameters: threshold = 5, hops = 3 → 2,493 neurons, 94,702 edges.** Within the size gate
+(300–8,000 neurons); no gate adjustment needed.
+
+Signing (Eckstein et al. 2024, presynaptic neuron's `consensus_nt` sets the sign; raw values are
+lower-case, e.g. `"gaba"`): acetylcholine → +1; gaba, glutamate, histamine → −1; dopamine,
+serotonin, octopamine, unclear → excluded (neuron stays as a node, its outgoing edges are dropped
+from the signed matrix and counted). No histamine or serotonin neurons occur in this sub-circuit.
+
+Summary, produced by `.venv/Scripts/python -m flybrain.subcircuit` (default threshold=5, hops=3):
+
+| metric | value |
+|---|---|
+| neurons | 2,493 |
+| edges kept (induced subgraph, before NT exclusion) | 94,702 |
+| edges included in signed matrix | 92,825 |
+| edges excluded by neurotransmitter | 1,877 |
+| % excitatory by edge count | 64.3% |
+| % inhibitory by edge count | 35.7% |
+| % excitatory by synapse weight | 61.2% |
+| % inhibitory by synapse weight | 38.8% |
+| input seeds in network | 311 |
+| output seeds in network | 10 |
+| matrix nnz | 92,825 |
+
+`consensus_nt` within the 2,493 kept neurons: acetylcholine 1,630, gaba 642, glutamate 201,
+unclear 13, dopamine 4, octopamine 3 (sums to 2,493).
+
+Matrix convention: `W[pre, post] = sign(pre) * synapse_count`, `float32`, scipy CSR, shape
+`(2493, 2493)`. Row/col order matches `neurons.parquet` row order exactly: input seeds first
+(sorted by `bodyId`), then output seeds (sorted by `bodyId`), then interneurons (sorted by
+`bodyId`). Step 3 applies `w_syn = 0.275 mV` itself; it is **not** baked into this matrix.
+
+`neurons.parquet` columns: `idx`, `bodyId`, `type`, `somaSide`, `consensus_nt`, `sign` (+1/−1/0,
+0 = excluded neurotransmitter), `role` (`input_seed` / `output_seed` / `interneuron`).
+
+`data/derived/subcircuit.npz`: 234,597 bytes (0.22 MB, well under the 20 MB commit gate);
+sha256 `2794848d4744f323ca5036f1b7ecdc9bc977ba0b6a51163caca90a78ea2c87c4`.
 
 ## LIF parameters & benchmark (Step 3)
 

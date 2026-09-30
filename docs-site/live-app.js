@@ -18,6 +18,8 @@ import {
   SpeedGovernor,
 } from "./live-core.js?v=6";
 import { sizeGameCanvas, drawWorld, drawPipe, drawBird, drawTag, BIRD } from "./sprites.js?v=7";
+import { newRaceLog, logPokes, handicaps, raceCode, brainSeed, RACE_LOG_FORMAT } from "./race-log.js?v=1";
+import { track } from "./analytics.js?v=1";
 
 const BEST_PIPES_KEY = "flybrain-flappy-best-pipes";
 
@@ -146,6 +148,8 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     flapQueued: false,
     bestPipes: readBest(),
     outcomeKey: "",
+    race: null, // race-log.js log of the current race, for analytics and replay checks
+    liveSent: false,
     // activity history
     inputRows: null,
     raster: null, // Uint8Array(HISTORY * nRows), column-major ring
@@ -278,10 +282,12 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     return s;
   }
 
-  const brainSeed = (seed) => (seed ^ 0x5bd1e995) >>> 0;
-
   function startLevel(seed) {
+    if (st.race && st.race.started && !st.race.sent) sendRace(true);
+    st.race = null; // so this pause() is not counted against the abandoned race
     pause();
+    st.race = isRace() ? newRaceLog(seed, st.pokes) : null;
+    st.liveSent = false;
     st.seed = seed;
     st.level = new EndlessLevel(seed, st.game);
     st.levelKind = st.kind;
@@ -336,9 +342,16 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     applyLesions();
   }
 
+  // Pokes change the fly's run, so a race logs each one against the fly frame it takes effect on.
+  function notePokes(reset) {
+    if (st.race && st.fly && st.fly.alive) logPokes(st.race, st.fly.frame, st.pokes, reset);
+  }
+
   function togglePoke(key) {
     st.pokes[key] = !st.pokes[key];
     syncPokeUI();
+    notePokes(false);
+    track("poke_changed", { poke: key, on: st.pokes[key], mode: st.kind });
   }
 
   function resetBrain() {
@@ -348,6 +361,8 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       st.brain.reset(brainSeed(st.seed));
       st.readout.reset();
     }
+    notePokes(true);
+    track("brain_reset", { mode: st.kind });
   }
 
   // ---------------- play / pause / loop ----------------
@@ -358,6 +373,10 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
 
   function play() {
     if (!st.loaded || allDone()) return;
+    if (st.race && !st.race.started) {
+      st.race.started = true;
+      track("race_started", { seed: st.seed });
+    }
     st.playing = true;
     st.started = true;
     st.lastTs = null;
@@ -367,6 +386,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
   }
 
   function pause() {
+    if (st.playing && st.race && !allDone()) st.race.pauses++;
     st.playing = false;
     if (st.raf) {
       cancelAnimationFrame(st.raf);
@@ -398,6 +418,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     if (isRace() && st.human.alive) {
       const f = st.flapQueued;
       st.flapQueued = false;
+      if (f && st.race) st.race.flaps.push(st.human.frame);
       const y0 = st.human.birdY;
       st.human.step(f);
       st.humanVy = st.human.birdY - y0;
@@ -490,13 +511,27 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     const fly = `${pipesText(st.fly.score)}, ${formatSurvival(st.fly.frame, ms)}`;
     let text = "";
     if (!isRace()) {
-      if (!st.fly.alive) text = `The fly crashed on level #${st.seed}: ${fly} of game time.`;
+      if (!st.fly.alive) {
+        text = `The fly crashed on level #${st.seed}: ${fly} of game time.`;
+        if (!st.liveSent) {
+          st.liveSent = true;
+          track("live_run_finished", {
+            seed: st.seed,
+            fly_pipes: st.fly.score,
+            fly_frames: st.fly.frame,
+            pokes: activePokes(st.pokes),
+          });
+        }
+      }
     } else {
       const you = st.human ? `${pipesText(st.human.score)}, ${formatSurvival(st.human.frame, ms)}` : "";
       if (!st.human.alive && !st.fly.alive) {
+        const r = st.race;
+        if (!r.sent) sendRace(true);
+        const hc = handicaps(r);
         text = `You: ${you} · Fly: ${fly}. ${
           st.human.score > st.fly.score ? "You passed more pipes." : st.human.score < st.fly.score ? "The fly passed more pipes." : "Same number of pipes."
-        }`;
+        } Race code ${r.code}.${hc.length ? ` The fly was handicapped (${hc.join(", ")}), so this was not a fair race.` : ""}`;
       } else if (!st.human.alive) {
         text = `You crashed: ${you}. The fly is still flying; speed is unlocked so you can skip ahead.`;
       } else if (!st.fly.alive) {
@@ -513,7 +548,46 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
   }
 
   function updateBestLine() {
-    setText(els.bestLine, `Your best on this device: ${pipesText(st.bestPipes)} (kept in this browser only, never sent anywhere).`);
+    setText(els.bestLine, `Your best on this device: ${pipesText(st.bestPipes)} (kept in this browser).`);
+  }
+
+  // ---------------- race analytics ----------------
+
+  function raceProps() {
+    const r = st.race;
+    const h = st.human;
+    const f = st.fly;
+    const hc = handicaps(r);
+    return {
+      race_code: raceCode({ seed: r.seed, flaps: r.flaps, pokeLog: r.pokeLog, humanFrames: h.frame, flyFrames: f.frame }),
+      format: RACE_LOG_FORMAT,
+      seed: r.seed,
+      finished: !h.alive && !f.alive,
+      outcome: h.score > f.score ? "human_won" : h.score < f.score ? "fly_won" : "tie",
+      human_pipes: h.score,
+      human_frames: h.frame,
+      human_alive: h.alive,
+      fly_pipes: f.score,
+      fly_frames: f.frame,
+      fly_alive: f.alive,
+      fly_handicapped: hc.length > 0,
+      handicaps: hc,
+      pauses: r.pauses,
+      flaps: r.flaps,
+      poke_log: r.pokeLog,
+    };
+  }
+
+  // The final event goes once per race: when both birds are down, or with finished=false if the
+  // visitor starts another level mid-race. Leaving the page sends a partial one that does not end
+  // the race, because a back-button return (bfcache) resumes it.
+  function sendRace(final) {
+    const props = raceProps();
+    if (final) {
+      st.race.code = props.race_code;
+      st.race.sent = true;
+    }
+    track("race_finished", props, { beacon: !final });
   }
 
   function render(force) {
@@ -741,8 +815,15 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     els.pokeGain.addEventListener("input", () => {
       st.pokes.gain = Number(els.pokeGain.value) / 100;
       syncPokeUI();
+      notePokes(false);
+    });
+    els.pokeGain.addEventListener("change", () => {
+      track("poke_changed", { poke: "gain", value: st.pokes.gain, mode: st.kind });
     });
     els.btnResetBrain.addEventListener("click", resetBrain);
+    window.addEventListener("pagehide", () => {
+      if (st.race && st.race.started && !st.race.sent) sendRace(false);
+    });
 
     // In a race that has not started yet, the first tap on the game starts it.
     canvas.addEventListener("pointerdown", () => {

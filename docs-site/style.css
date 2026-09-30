@@ -103,7 +103,7 @@ a { color: var(--link); text-underline-offset: 2px; }
 
 .sky {
   background: var(--sky);
-  padding: 28px 16px 36px;
+  padding: 20px 16px 36px;
 }
 
 .site-header,
@@ -134,7 +134,7 @@ main {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 12px 24px;
-  margin: 22px 0 20px;
+  margin: 16px 0 16px;
 }
 
 .mode-switch {
@@ -204,7 +204,11 @@ main {
 
 @media (min-width: 900px) {
   .stage {
-    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    /* desktop: the game column is as wide as a game that fits the window height below the
+       header, so the whole game shows without scrolling on a 720px-tall laptop. app.js keeps
+       --stage-top at the stage's distance from the top of the page. */
+    --game-w: clamp(300px, calc((100svh - var(--stage-top, 240px) - 16px) * 400 / 568), 400px);
+    grid-template-columns: var(--game-w) minmax(0, 1fr);
     align-items: start;
   }
 }
@@ -223,10 +227,14 @@ main {
 
 @media (min-width: 900px) {
   .game { max-width: none; }
+  .game .screen { width: 100%; }
 }
 
 .screen {
   position: relative;
+  /* on short screens, shrink the game so all of it fits in the window at once */
+  width: min(100%, calc((100svh - 24px) * 400 / 568));
+  margin-inline: auto;
   border: 3px solid var(--outline);
   border-radius: 8px;
   overflow: hidden;
@@ -317,10 +325,63 @@ main {
 
 .screen-status:empty { display: none; }
 
-/* the crash result, styled like the original scoreboard */
+.screen-cta {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  width: max-content;
+  max-width: 90%;
+  pointer-events: none;
+}
+
+.screen-cta .btn {
+  pointer-events: auto;
+  min-height: 52px;
+  padding: 0 22px;
+  font-size: 1.05rem;
+}
+
+/* pause, in the ground strip where nothing in the game happens */
+.screen-pause {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--press);
+  cursor: pointer;
+}
+
+.screen-pause span {
+  width: 5px;
+  height: 16px;
+  background: var(--ink);
+  border-radius: 1px;
+}
+
+/* the crash result, styled like the original scoreboard, sitting just above the ground */
 .game-over-line {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 12%;
   margin: 0;
-  padding: 12px 14px;
+  padding: 8px 12px;
+  font-size: 0.95rem;
+  pointer-events: none;
   font-weight: 700;
   color: var(--ink);
   background: var(--sand);

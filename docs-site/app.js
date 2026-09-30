@@ -46,6 +46,11 @@ const els = {
   btnRestart: document.getElementById("btn-restart"),
   speedBtns: Array.from(document.querySelectorAll(".watch-speed-btn")),
   metaGrid: document.getElementById("meta-grid"),
+  screen: document.querySelector(".screen"),
+  screenCta: document.getElementById("screen-cta"),
+  screenGo: document.getElementById("screen-go"),
+  screenSame: document.getElementById("screen-same"),
+  screenPause: document.getElementById("screen-pause"),
 };
 
 // Which page sections each mode shows (ids). Everything else is hidden.
@@ -94,7 +99,21 @@ const live = createLiveApp({
   prefersReducedMotion,
 });
 
+// The desktop layout sizes the game to fit the window below everything above the stage; that
+// height changes with the mode notice and when fonts or the replay context arrive.
+function trackStageTop() {
+  const stage = document.querySelector(".stage");
+  const update = () => {
+    const top = Math.round(stage.getBoundingClientRect().top + window.scrollY);
+    document.documentElement.style.setProperty("--stage-top", `${top}px`);
+  };
+  new ResizeObserver(update).observe(document.querySelector(".site-header"));
+  new ResizeObserver(update).observe(document.querySelector(".mode-bar"));
+  update();
+}
+
 async function main() {
+  trackStageTop();
   wireControls();
   setMode("live");
   live.load(); // handles its own loading state and failure; never throws
@@ -462,6 +481,7 @@ function watchLoop(ts) {
     } else {
       watch.playing = false;
       els.btnPlayPause.textContent = "Play";
+      syncWatchScreen();
       break;
     }
   }
@@ -476,8 +496,27 @@ function restartWatch() {
   renderWatchFrame();
 }
 
+// On-game buttons in replay mode: pause while playing, Play (or Replay at the end) while stopped.
+function syncWatchScreen() {
+  if (mode !== "watch" || !replayReady) return;
+  const atEnd = watch.frameIdx >= data.meta.frames - 1;
+  els.screenPause.hidden = !watch.playing;
+  els.screenCta.hidden = watch.playing;
+  els.screenGo.textContent = atEnd ? "Replay" : "Play";
+  els.screenSame.hidden = true;
+}
+
+function setWatchPlaying(playing) {
+  if (playing && watch.frameIdx >= data.meta.frames - 1) restartWatch();
+  watch.playing = playing;
+  els.btnPlayPause.textContent = playing ? "Pause" : "Play";
+  if (playing) startWatchLoop();
+  syncWatchScreen();
+}
+
 function showWatch() {
   sizeGameCanvas(els.canvas, VIEW_WIDTH, config.height);
+  syncWatchScreen();
   renderWatchFrame();
   if (watch.playing) startWatchLoop();
 }
@@ -514,13 +553,22 @@ function wireControls() {
   for (const [name, btn] of Object.entries(els.modeButtons)) {
     btn.addEventListener("click", () => {
       if (mode !== name) setMode(name);
+      // a race needs the whole game on screen; on phones it starts below the header
+      if (name === "race") els.screen.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion ? "auto" : "smooth" });
     });
   }
 
   els.btnPlayPause.addEventListener("click", () => {
-    watch.playing = !watch.playing;
-    els.btnPlayPause.textContent = watch.playing ? "Pause" : "Play";
-    if (watch.playing) startWatchLoop();
+    setWatchPlaying(!watch.playing);
+    if (watch.playing) els.screen.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion ? "auto" : "smooth" });
+  });
+
+  // live-app.js handles these buttons in the live modes; here only in replay mode
+  els.screenGo.addEventListener("click", () => {
+    if (mode === "watch" && replayReady) setWatchPlaying(true);
+  });
+  els.screenPause.addEventListener("click", () => {
+    if (mode === "watch" && replayReady) setWatchPlaying(false);
   });
 
   els.btnRestart.addEventListener("click", () => {

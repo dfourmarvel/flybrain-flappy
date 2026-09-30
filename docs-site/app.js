@@ -494,6 +494,7 @@ function restartWatch() {
   watch.acc = 0;
   watch.lastTs = null;
   renderWatchFrame();
+  syncWatchScreen();
 }
 
 // On-game buttons in replay mode: pause while playing, Play (or Replay at the end) while stopped.

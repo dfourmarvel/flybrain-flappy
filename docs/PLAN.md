@@ -389,7 +389,7 @@ a real simulated run**, not a live simulation.
 - [ ] Works on a 375px-wide phone with no horizontal scroll; canvas scales.
 - [ ] Keyboard accessible (play/pause reachable and operable by keyboard), buttons have visible focus, and the activity panel is not the only way to understand the page.
 - [ ] `prefers-reduced-motion` is respected: the replay does not autoplay when it is set.
-- [ ] No external scripts, no fonts from a CDN, no analytics.
+- [ ] No external scripts, no analytics. Fonts only from Google Fonts (changed 2026-09-30, Daniel, for the page redesign).
 - [ ] Deployed to GitHub Pages and verified live in a real browser, not just locally.
 
 ---

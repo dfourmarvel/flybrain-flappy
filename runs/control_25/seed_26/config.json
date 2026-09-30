@@ -1,0 +1,58 @@
+{
+  "network": "control_25",
+  "run_seed": 26,
+  "git_commit": "dbe74072b00550bb6fde7956013c73d8d4acd42b",
+  "versions": {
+    "python": "3.11.15",
+    "numpy": "2.3.3",
+    "scipy": "1.16.2",
+    "pandas": "2.3.2",
+    "cma": "4.0.0"
+  },
+  "budget_gens": 150,
+  "budget_minutes": 90,
+  "popsize": 16,
+  "sigma0": 1.0,
+  "probe_every": 5,
+  "max_frames_train": 600,
+  "max_frames_full": 1500,
+  "train_seeds": [
+    11,
+    22,
+    33
+  ],
+  "probe_seeds": [
+    201,
+    202,
+    203,
+    204,
+    205
+  ],
+  "heldout_seeds": [
+    301,
+    302,
+    303,
+    304,
+    305,
+    306,
+    307,
+    308,
+    309,
+    310,
+    311,
+    312,
+    313,
+    314,
+    315,
+    316,
+    317,
+    318,
+    319,
+    320
+  ],
+  "network_path": "C:\\Users\\danie\\OneDrive\\Documents\\projects\\flybrain-flappy\\data\\derived\\controls\\control_25.npz",
+  "network_sha256": "6a23e0944ada1fdd80044c85639b6e29a626deccb2e777f01831a8b0f2dd9f6b",
+  "n_generations_run": 150,
+  "elapsed_s": 3314.2970000000205,
+  "stop_reason": "budget_gens"
+}

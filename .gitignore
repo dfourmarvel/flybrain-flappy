@@ -3,7 +3,16 @@ data/raw/
 data/derived/*
 !data/derived/subcircuit.npz
 !data/derived/neurons.parquet
-runs/
+# training outputs: keep the small per-run results (so the analysis is reproducible),
+# not the sweep logs
+runs/**
+!runs/*/
+!runs/*/seed_*/
+!runs/*/seed_*/config.json
+!runs/*/seed_*/heldout.json
+!runs/*/seed_*/history.csv
+!runs/*/seed_*/best_x.npy
+!runs/*/seed_*/stop_reason
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -11,3 +20,4 @@ __pycache__/
 .env.local
 .foreman/
 src/*.egg-info/
+.claude/

@@ -207,7 +207,7 @@ main {
     /* desktop: the game column is as wide as a game that fits the window height below the
        header, so the whole game shows without scrolling on a 720px-tall laptop. app.js keeps
        --stage-top at the stage's distance from the top of the page. */
-    --game-w: clamp(300px, calc((100svh - var(--stage-top, 240px) - 16px) * 400 / 568), 400px);
+    --game-w: clamp(240px, calc((100svh - var(--stage-top, 240px) - 16px) * 400 / 568), 400px);
     grid-template-columns: var(--game-w) minmax(0, 1fr);
     align-items: start;
   }
@@ -377,7 +377,7 @@ main {
   position: absolute;
   left: 10px;
   right: 10px;
-  bottom: 12%;
+  bottom: calc(12% + 8px); /* clear of the pause button in the ground strip */
   margin: 0;
   padding: 8px 12px;
   font-size: 0.95rem;

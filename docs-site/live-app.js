@@ -713,6 +713,11 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       if (allDone()) startLevel(newSeed());
       else play();
     });
+    // The on-game buttons are pointer-only duplicates, hidden from assistive tech: a click must
+    // not leave focus on them.
+    for (const b of [els.screenGo, els.screenSame, els.screenPause]) {
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+    }
     els.screenSame.addEventListener("click", () => {
       if (st.kind && st.loaded) startLevel(st.seed);
     });
@@ -753,10 +758,9 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       const onControl = t instanceof Element && t !== canvas && t.closest("button, input, select, textarea, a, summary");
       if (onControl) return;
       if (!st.playing) {
-        if (t === canvas && st.loaded && !st.started && !allDone()) {
-          e.preventDefault();
-          play();
-        }
+        if (t !== canvas) return;
+        e.preventDefault(); // Space on the game must never scroll the page away from it
+        if (st.loaded && !st.started && !allDone()) play();
         return;
       }
       e.preventDefault();

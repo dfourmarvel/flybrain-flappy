@@ -202,7 +202,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       els.raceTimeNote.textContent = note;
       els.inputHint.textContent =
         `One row per input neuron, one column per frame (last ${HISTORY}), newest on the right. ` +
-        `Brighter = more spikes.`;
+        `Darker = more spikes.`;
       st.loaded = true;
       setControlsDisabled(false);
       setStatus("");

@@ -54,6 +54,9 @@ control results are seen.
 | L6 | **Public repo + GitHub Pages** demo. Repo name `flybrain-flappy`. | 2026-09-17 |
 | L7 | **Python trains offline; the browser replays.** The web demo replays a recorded real episode. It never claims to simulate live. | 2026-09-17 |
 | L8 | Tier: **Light** — single planning doc, no database, no auth, no user data. | 2026-09-17 |
+| L9 | **Phase 2: live mode (supersedes the "replay only" part of L7).** The browser also runs the model live. The recorded replay stays as the exact, verified record of the best run. | 2026-09-30 |
+| L10 | Live mode offers: fresh random levels; racing the live fly on the same level; four pokes — blind one eye (silence left or right input seeds), cut the giant fiber (silence DNp01), dim the eyes (input-drive slider), remove inhibition (drop every negative-weight edge). No shuffled-brain swap. | 2026-09-30 |
+| L11 | Live fidelity = same model, same fitted interface, **statistically** equivalent to Python (spike-for-spike reproduction is not attempted: float differences grow chaotically). Proven by tests, not asserted. | 2026-09-30 |
 
 ---
 
@@ -427,3 +430,45 @@ step starts.
 - Nothing up front — the bulk data needs no account.
 - Only if Step 1's fallback route is needed: a personal neuPrint token, created by him, never by an agent.
 - A decision on whether `docs/RESULTS.md` becomes a LinkedIn post once the numbers exist.
+
+
+---
+
+## Phase 2 — Live mode (added 2026-09-30, Daniel)
+
+Same spec-wins rule. Three steps; P1 and P2 run in parallel (disjoint write sets), P3 after both.
+
+### P1 — Web export (`src/flybrain/export_web.py`)
+
+`python -m flybrain.export_web --run runs/real/seed_17` writes `docs-site/live/`:
+
+- `csr_indptr.bin` — Int32 little-endian, N+1 values (row pointers of subcircuit.npz, pre = row).
+- `csr_indices.bin` — Uint16 LE, nnz values (post-synaptic index; N = 2,493 < 65,536).
+- `csr_weights.bin` — Int16 LE, nnz values: sign × synapse count exactly as in subcircuit.npz (max 2,591 fits). `w_syn` is NOT baked in.
+- `model.json` — `schema_version` 1; `n_neurons`, `nnz`; `constants` {v_0, v_rst, v_th, t_mbr, tau, t_rfc, t_dly, w_syn, f_poi, dt = 0.2} copied from `flybrain.lif`; `roles` {input_L, input_R, lc4, output (the 10 output seeds in readout order), output_labels, dnp01 (2), inhibitory (every neuron with sign −1)} as index lists; `interface` {G, lam, kappa, r0, w[10], tau_ms, bias} from `interface.from_vector(best_x)` plus `source_run` and its held-out mean; `game` = every GameConfig field; `reference` (below).
+- `reference` — produced by the Python `Simulator` in the same script, so the browser engine has numbers to be tested against: (a) **open-loop**: LC4 input seeds at 150 Hz, 1 simulated second, 40 trials, seeds 20,000–20,039 → mean rate of each output seed and mean rate of all non-input neurons; (b) **closed-loop**: the source run's held-out mean. Record the protocol text with the numbers.
+
+Total size must be under 2 MB. Tests (`tests/test_export_web.py`): the three .bin files round-trip exactly to subcircuit.npz; roles match neurons.parquet; interface params match `from_vector(best_x)`; model.json is valid UTF-8 JSON.
+
+### P2 — Browser LIF engine (`docs-site/lif.js`, `docs-site/live-interface.js`)
+
+ES modules, no dependencies, typed arrays, single fly.
+
+- `lif.js` exports `class LiveBrain`: `constructor(model, csr, {seed})`, `reset(seed)`, `setLesions({silenced: Uint8Array | null, inhibitionOff: boolean})`, `run(nSteps, rates: Float32Array) → Int32Array counts`. Physics identical to `src/flybrain/lif.py` (exact integrator, per-step order, delay ring buffer keyed on the absolute step, refractory freezing v and g, Poisson kick of w_syn·f_poi applied even while refractory, two-pass propagation). Optional `iExt` for tests. RNG: xoshiro128** seeded via splitmix32 — deterministic per seed. Silenced neurons never spike (v clamped to v_0, input ignored). `inhibitionOff` skips every negative-weight edge during propagation.
+- `live-interface.js`: `inputRates(obs, params, roles, game, {inputGain, blindLeft, blindRight}) → Float32Array` using exactly the Python Step 5 formulas; `class Readout` (trace decay then weighted sum + bias > 0).
+- Levels for live play: generated in JS from a seeded PRNG, gap centres uniform in `[gap_height/2 + gap_margin, height − gap_height/2 − gap_margin]`, pipe spacing from `game`, enough pipes for max_frames. Physics comes from the existing `engine.js`.
+
+Node tests (`docs-site/live.test.mjs`, run in the Pages workflow alongside parity):
+1. Isolated neuron, constant 10 mV current: analytic rate ±5%; 5 mV: no spikes.
+2. Zero input on the real network: no spikes for 5 simulated seconds.
+3. Delay: a forced spike arrives exactly D = 9 steps later.
+4. **Open-loop reference**: output-seed rates within ±7% of `reference` (±3 Hz for rates under 20 Hz); network rate within ±7%.
+5. **Closed-loop**: the live fly with the exported interface on 10 fresh levels (seeds 1–10), full 1,500 frames: mean score ≥ 15. Readout weights zeroed → never scores. Visual drive off → never scores.
+6. Pokes behave: silencing DNp01 produces zero DNp01 spikes; inhibitionOff increases network rate.
+7. Performance: 125 steps (one game frame) must take ≤ 10 ms in Node on this laptop; report the number.
+
+If test 4 or 5 fails, report BLOCKED with numbers — do not loosen tolerances.
+
+### P3 — Live mode UI (`docs-site/`)
+
+Default mode "Live". Fresh level on load and via a "New level" button (shows the level number). Play/pause, speed. Pokes panel: Blind left eye, Blind right eye (toggles), Cut giant fiber (toggle), Dim the eyes (slider 0–100%), Remove inhibition (toggle), Reset brain. Pokes apply immediately and are shown on the activity panel. "Race the fly": the human and the live fly on the same fresh level, side by side, result line as today. Live activity panel reuses the replay's panels, scrolling. Plain-fact copy: this runs the same model and fitted interface in your browser; it will not match the recorded run spike for spike; pokes are experiments on an interface fitted to the intact circuit, so a broken fly after a poke is the expected result. Same accessibility and mobile gates as Step 10. The simulation must not freeze the page: if a frame's compute exceeds its budget on a slow device, reduce the speed rather than drop frames silently, and say so on screen.

@@ -231,15 +231,15 @@ export function drawBird(ctx, x, y, r, colors, vy, frame, alive) {
   ctx.fillStyle = C.pupil;
   ctx.fillRect(r * 0.4, -r * 0.42, 2.5, 4);
 
-  // beak: two lips, protruding at most 3 px past the circle
+  // beak: two lips; with the 1 px half-stroke they reach at most r + 2 px from the centre
   ctx.fillStyle = C.beak;
   ctx.beginPath();
-  ctx.roundRect(r * 0.2, r * 0.02, r * 0.8 + 3, r * 0.26, 2);
+  ctx.roundRect(r * 0.2, r * 0.02, r * 0.8 + 1, r * 0.26, 2);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = C.beakLight;
   ctx.beginPath();
-  ctx.roundRect(r * 0.15, r * 0.3, r * 0.75 + 2, r * 0.24, 2);
+  ctx.roundRect(r * 0.15, r * 0.3, r * 0.75, r * 0.24, 2);
   ctx.fill();
   ctx.stroke();
 

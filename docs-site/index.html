@@ -125,7 +125,7 @@
             <button type="button" class="speed-btn live-speed-btn" data-speed="4" aria-pressed="false" disabled>4×</button>
           </div>
           <p class="hint" id="slow-note" role="status"></p>
-          <p class="hint" id="race-hint" hidden>Flap with Space, a tap on the game, or the Flap button. Speed unlocks once you crash.</p>
+          <p class="hint" id="race-hint" hidden>Flap with Space (when the game has focus), a tap on the game, or the Flap button. Speed unlocks once you crash.</p>
         </div>
 
         <div class="controls" id="watch-controls" hidden>
@@ -332,7 +332,7 @@
 
 <footer class="site-footer">
   <p class="parity-note">
-    Game physics were checked frame by frame against the recorded Python run
+    Physics verified against the Python engine: the game physics were checked frame by frame against the recorded Python run
     (<span class="num">node docs-site/parity.test.mjs</span>) and match exactly. The live brain is
     checked on average rates and scores, not spike for spike
     (<span class="num">node docs-site/live.test.mjs</span>).

@@ -1,0 +1,109 @@
+{
+  "network": "control_04",
+  "run_seed": 5,
+  "seeds": [
+    {
+      "seed": 301,
+      "score": 0,
+      "frames_survived": 73
+    },
+    {
+      "seed": 302,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 303,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 304,
+      "score": 0,
+      "frames_survived": 80
+    },
+    {
+      "seed": 305,
+      "score": 0,
+      "frames_survived": 37
+    },
+    {
+      "seed": 306,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 307,
+      "score": 0,
+      "frames_survived": 37
+    },
+    {
+      "seed": 308,
+      "score": 0,
+      "frames_survived": 37
+    },
+    {
+      "seed": 309,
+      "score": 0,
+      "frames_survived": 37
+    },
+    {
+      "seed": 310,
+      "score": 0,
+      "frames_survived": 77
+    },
+    {
+      "seed": 311,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 312,
+      "score": 0,
+      "frames_survived": 74
+    },
+    {
+      "seed": 313,
+      "score": 0,
+      "frames_survived": 78
+    },
+    {
+      "seed": 314,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 315,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 316,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 317,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 318,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 319,
+      "score": 0,
+      "frames_survived": 70
+    },
+    {
+      "seed": 320,
+      "score": 0,
+      "frames_survived": 70
+    }
+  ],
+  "mean": 0.0,
+  "median": 0.0,
+  "params": "G=172.0Hz lam=77.4px kappa=0.5674 r0=48.8Hz tau=188.7ms bias=+5.014 w=[+0.000, -0.019, -0.009, -0.009, -0.021, -0.028, -0.010, -0.019, +0.011, +0.020]"
+}

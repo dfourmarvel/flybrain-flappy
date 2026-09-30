@@ -3,7 +3,9 @@
 // physics and neuron activity comes from replay/best.json at runtime -- nothing about frame
 // count, score or a GameConfig value is assumed here. Live and race modes live in live-app.js.
 
-import { createLiveApp } from "./live-app.js?v=7";
+import { createLiveApp } from "./live-app.js?v=8";
+// same URL as live-app.js imports, so both share one analytics module
+import { initAnalytics, track } from "./analytics.js?v=1";
 import { sizeGameCanvas, drawWorld, drawPipe, drawBird, BIRD } from "./sprites.js?v=7";
 
 const VIEW_WIDTH = 400; // logical canvas width in game px; not a GameConfig field, a rendering choice.
@@ -91,6 +93,8 @@ const watch = {
   lastTs: null,
   raf: 0,
 };
+
+initAnalytics();
 
 const live = createLiveApp({
   canvas: els.canvas,
@@ -527,6 +531,7 @@ function showWatch() {
 function setMode(newMode) {
   const leaving = mode;
   mode = newMode;
+  if (leaving !== newMode) track("mode_changed", { mode: newMode, from: leaving });
   for (const [name, btn] of Object.entries(els.modeButtons)) {
     btn.setAttribute("aria-pressed", String(name === newMode));
   }

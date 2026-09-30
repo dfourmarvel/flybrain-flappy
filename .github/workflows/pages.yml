@@ -35,6 +35,8 @@ jobs:
       - run: node docs-site/live.test.mjs
         env:
           CI: "true"
+      # Races logged in the browser must replay exactly, or claimed wins cannot be checked.
+      - run: node docs-site/race.test.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

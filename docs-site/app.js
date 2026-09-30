@@ -3,7 +3,8 @@
 // physics and neuron activity comes from replay/best.json at runtime -- nothing about frame
 // count, score or a GameConfig value is assumed here. Live and race modes live in live-app.js.
 
-import { createLiveApp } from "./live-app.js?v=6";
+import { createLiveApp } from "./live-app.js?v=7";
+import { sizeGameCanvas, drawWorld, drawPipe, drawBird, BIRD } from "./sprites.js?v=7";
 
 const VIEW_WIDTH = 400; // logical canvas width in game px; not a GameConfig field, a rendering choice.
 
@@ -49,11 +50,14 @@ const els = {
 
 // Which page sections each mode shows (ids). Everything else is hidden.
 const MODE_SECTIONS = {
-  live: ["live-stats", "run-controls", "pokes", "live-activity"],
-  race: ["race-stats", "run-controls", "pokes", "live-activity"],
-  watch: ["watch-stats", "watch-controls", "watch-activity"],
+  live: ["live-hud", "live-stats", "run-controls", "pokes", "live-activity"],
+  race: ["race-hud", "race-stats", "run-controls", "pokes", "live-activity"],
+  watch: ["watch-hud", "watch-controls", "watch-activity"],
 };
-const ALL_SECTIONS = ["live-stats", "race-stats", "watch-stats", "run-controls", "pokes", "watch-controls", "live-activity", "watch-activity"];
+const ALL_SECTIONS = [
+  "live-hud", "race-hud", "watch-hud", "live-stats", "race-stats",
+  "run-controls", "pokes", "watch-controls", "live-activity", "watch-activity",
+];
 
 const ctx = els.canvas.getContext("2d");
 const rasterCtx = els.rasterCanvas.getContext("2d");
@@ -170,28 +174,17 @@ function applyConnectomeProvenance() {
     els.placeholderBanner.hidden = true;
     els.placeholderBanner.textContent = "";
 
+    // The explainer copy lives in index.html; only its numbers come from the replay file.
     const ctx = data.meta.context || null;
-    els.connectomeExplainer.innerHTML =
-      `The <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">connectome</a> — ` +
-      `the wiring diagram of a real fruit fly's brain, down to individual synapses — is never ` +
-      `changed. A ${data.meta.n_neurons.toLocaleString()}-neuron sub-circuit around the fly's ` +
-      `looming-detection and escape pathways is simulated from that measured wiring (the ` +
-      `<a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/RESULTS.md#limitations" rel="noopener">limitations</a> ` +
-      `list what is approximated). The only thing <strong>fitted</strong> to this game is a thin ` +
-      `interface: how the pipe's distance and the bird's height relative to the gap become input ` +
-      `to the looming neurons, and how the escape neurons' spikes become a flap. The brain did not ` +
-      `learn Flappy Bird; the interface around it was fitted.` +
-      (ctx
-        ? `<br><br><strong>What the brain is doing (offline runs, levels capped at 1,500 frames).</strong> The interface already tells it whether ` +
-          `the gap is above or below, by which side's looming neurons it drives. The circuit's job ` +
-          `is to carry that left/right signal to the escape neurons while keeping the two sides largely separate. ` +
-          `A one-line rule using the same signal, with no brain at all, scores ` +
-          `<span class="mono">${ctx.rule_baseline.toFixed(2)}</span>, so the circuit is not ` +
-          `solving the game. Shuffled versions of the same wiring lose that left/right separation ` +
-          `and are also much more active overall; all ${ctx.control_runs} of them scored ` +
-          `<span class="mono">${ctx.control_best.toFixed(2)}</span> or less. Which of those differences ` +
-          `makes them fail was not tested (<a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/EXPLORATORY.md" rel="noopener">details</a>).`
-        : "");
+    for (const el of document.querySelectorAll(".n-neurons")) {
+      el.textContent = `${data.meta.n_neurons.toLocaleString()}-neuron `;
+    }
+    if (ctx) {
+      document.getElementById("rule-baseline").textContent = ctx.rule_baseline.toFixed(2);
+      document.getElementById("control-runs").textContent = String(ctx.control_runs);
+      document.getElementById("control-best").textContent = ctx.control_best.toFixed(2);
+      document.getElementById("brain-doing").hidden = false;
+    }
 
     if (ctx) {
       els.runContext.innerHTML =
@@ -212,7 +205,9 @@ function applyConnectomeProvenance() {
       "Placeholder data: this run used a synthetic test network, not a real fly connectome. " +
       "The score and neuron activity on this page are for testing the page, not biology.";
 
-    els.connectomeExplainer.textContent =
+    const p = document.createElement("p");
+    els.connectomeExplainer.replaceChildren(p);
+    p.textContent =
       "This particular replay used a synthetic placeholder network to test this page before a " +
       "trained fly run was available — not a real connectome. In the finished project, the " +
       "connectome is a real fruit fly's wiring diagram and is never changed; only a thin interface " +
@@ -228,12 +223,12 @@ function applyConnectomeProvenance() {
 function buildMetaGrid() {
   const rows = [
     ["Connectome", data.meta.connectome],
-    ["Neurons (sub-circuit)", data.meta.n_neurons],
-    ["Synaptic edges", data.meta.n_edges],
+    ["Neurons (sub-circuit)", data.meta.n_neurons.toLocaleString()],
+    ["Synaptic edges", data.meta.n_edges.toLocaleString()],
     ["Network", data.meta.network],
     ["Held-out mean score", data.meta.heldout_mean],
     ["This episode's score", data.meta.score],
-    ["Recorded frames", data.meta.frames],
+    ["Recorded frames", data.meta.frames.toLocaleString()],
   ];
   els.metaGrid.innerHTML = rows
     .map(
@@ -259,32 +254,18 @@ function pipeXAtFrame(pipe, f) {
   return pipe.x0 - f * config.pipe_speed;
 }
 
-function drawGame(frameNumber, birdY, birdColor) {
-  const w = els.canvas.width;
-  const h = els.canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  // pipes: solid body with a bright gap-facing edge, so the gap reads at a glance
-  const body = "#233348";
-  const edge = "#6E93B5";
+function drawGame(frameNumber, birdY, vy) {
+  const w = VIEW_WIDTH;
+  const h = config.height;
+  drawWorld(ctx, w, h, frameNumber * config.pipe_speed);
   for (const pipe of level) {
     const x = pipeXAtFrame(pipe, frameNumber);
     if (x + config.pipe_width < 0 || x > w) continue;
     const gapTop = pipe.gap_centre - config.gap_height / 2;
     const gapBottom = pipe.gap_centre + config.gap_height / 2;
-    ctx.fillStyle = body;
-    ctx.fillRect(x, 0, config.pipe_width, gapTop);
-    ctx.fillRect(x, gapBottom, config.pipe_width, h - gapBottom);
-    ctx.fillStyle = edge;
-    ctx.fillRect(x, gapTop - 6, config.pipe_width, 6);
-    ctx.fillRect(x, gapBottom, config.pipe_width, 6);
+    drawPipe(ctx, x, config.pipe_width, gapTop, gapBottom, h);
   }
-
-  // main bird
-  ctx.fillStyle = birdColor;
-  ctx.beginPath();
-  ctx.arc(config.bird_x, birdY, config.bird_radius, 0, Math.PI * 2);
-  ctx.fill();
+  drawBird(ctx, config.bird_x, birdY, config.bird_radius, BIRD.fly, vy, frameNumber, true);
 }
 
 let cssVarCache = null;
@@ -328,11 +309,11 @@ function drawRasterFromIndices(canvasEl, ctxRef, indices, colorVar) {
 }
 
 function drawRasterStatic() {
-  drawRasterFromIndices(els.rasterCanvas, rasterCtx, roleIdx.inter, "--fly");
+  drawRasterFromIndices(els.rasterCanvas, rasterCtx, roleIdx.inter, "--sig-inter");
 }
 
 function drawInputRasterStatic() {
-  drawRasterFromIndices(els.inputRasterCanvas, inputRasterCtx, roleIdx.input, "--ok");
+  drawRasterFromIndices(els.inputRasterCanvas, inputRasterCtx, roleIdx.input, "--sig-input");
 }
 
 function drawGfStatic() {
@@ -344,7 +325,7 @@ function drawGfStatic() {
   gfCtx.clearRect(0, 0, els.gfCanvas.width, els.gfCanvas.height);
   const maxV = counts.reduce((m, row) => Math.max(m, row[0], row[1]), 0) || 1;
 
-  gfCtx.strokeStyle = getCss("--gf");
+  gfCtx.strokeStyle = getCss("--sig-gf");
   gfCtx.lineWidth = 1;
   drawTrace(counts.map((r) => r[0]), maxV); // R
   gfCtx.globalAlpha = 0.55;
@@ -384,7 +365,7 @@ function buildDnBars() {
     const track = document.createElement("div");
     track.className = "dn-bar-track";
     const fill = document.createElement("div");
-    fill.className = "dn-bar-fill";
+    fill.className = "dn-bar-fill" + (String(types[i] ?? "").startsWith("DNp01") ? " is-gf" : "");
     fill.style.height = "0%";
     fill.dataset.idx = String(i);
     track.appendChild(fill);
@@ -442,7 +423,8 @@ function renderWatchFrame() {
   const i = watch.frameIdx;
   const frameNumber = i + 1;
   const birdY = data.fly.bird_y[i];
-  drawGame(frameNumber, birdY, getCss("--fly"));
+  const vy = i > 0 ? birdY - data.fly.bird_y[i - 1] : 0;
+  drawGame(frameNumber, birdY, vy);
   setFlyScoreText(data.fly.score[i]);
   updateDnBars(i);
   updatePlayheads(i, data.meta.frames);
@@ -495,6 +477,7 @@ function restartWatch() {
 }
 
 function showWatch() {
+  sizeGameCanvas(els.canvas, VIEW_WIDTH, config.height);
   renderWatchFrame();
   if (watch.playing) startWatchLoop();
 }
@@ -520,8 +503,6 @@ function setMode(newMode) {
       "aria-label",
       "Flappy Bird game canvas. A bird moves through a column of pipes; a live text score is below."
     );
-    els.canvas.width = VIEW_WIDTH;
-    if (config) els.canvas.height = config.height;
     if (replayReady) showWatch();
   } else {
     if (leaving === "watch") stopWatchLoop();

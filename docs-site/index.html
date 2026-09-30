@@ -5,49 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>I suck at Flappy Bird, so I had a fly play for me</title>
 <meta name="description" content="A fruit-fly connectome sub-circuit playing Flappy Bird live in your browser: fresh levels, a race against the fly, brain pokes, and a recorded replay of the best run.">
-<link rel="stylesheet" href="style.css">
+<meta name="theme-color" content="#4EC0CA">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,700;1,400&family=Jersey+10&display=swap">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
-<header class="site-header">
-  <h1>I suck at Flappy Bird, so I had a fly play for me</h1>
-  <p class="tagline">A simulated 2,493-neuron circuit from a real fruit-fly connectome (wiring frozen) sits between the game and the flap. A fitted interface does the game logic; the circuit relays it.</p>
+<div class="sky">
 
-  <p class="mode-notice" data-mode="live">
-    <strong>Live:</strong> this runs the same circuit and the same fitted interface in your browser,
-    on a fresh endless level. It will not match the recorded run spike for spike, because small
-    numerical differences grow chaotically; it is checked against the Python simulator on average
-    rates and scores. The fly plays until it crashes.
-  </p>
-  <p class="mode-notice" data-mode="race" hidden>
-    <strong>Race:</strong> you and the live fly play the same fresh endless level, on one canvas.
-    The fly (cyan) runs in this browser, not from a recording. Space, click or tap flaps for you
-    (amber) only.
-  </p>
-  <p class="mode-notice" data-mode="watch" hidden>
-    <strong>This is a replay of one real recorded run</strong> — not a live simulation. The brain
-    ran once, offline, in Python; the numbers below and the "Recorded replay" panel show exactly
-    what happened that run, frame by frame.
-  </p>
-  <p class="placeholder-banner" id="placeholder-banner" role="alert" hidden></p>
-  <p class="run-context" id="run-context" hidden></p>
-</header>
+  <header class="site-header">
+    <h1>I suck at Flappy Bird, so I had a fly play for me</h1>
+    <p class="tagline">A simulated <span class="n-neurons"></span>circuit from a real fruit-fly connectome (wiring frozen) sits between the game and the flap. A fitted interface does the game logic; the circuit relays it.</p>
+  </header>
 
-<main>
+  <main>
 
-  <div class="mode-switch" role="group" aria-label="Mode">
-    <button type="button" id="mode-live" class="mode-btn" aria-pressed="true">Live</button>
-    <button type="button" id="mode-race" class="mode-btn" aria-pressed="false">Race the fly</button>
-    <button type="button" id="mode-watch" class="mode-btn" aria-pressed="false">Recorded replay</button>
-  </div>
+    <div class="mode-bar">
+      <div class="mode-switch" role="group" aria-label="Mode">
+        <button type="button" id="mode-live" class="mode-btn" aria-pressed="true">Live</button>
+        <button type="button" id="mode-race" class="mode-btn" aria-pressed="false">Race the fly</button>
+        <button type="button" id="mode-watch" class="mode-btn" aria-pressed="false">Recorded replay</button>
+      </div>
 
-  <section class="stage" aria-label="Game and neural activity">
-    <div class="stage-grid">
+      <div class="notices">
+        <p class="mode-notice" data-mode="live">
+          <strong>Live:</strong> the same circuit and fitted interface, running in your browser on a fresh
+          level until the fly crashes. Not spike-for-spike identical to the recorded run; checked against
+          the Python simulator on average rates and scores.
+        </p>
+        <p class="mode-notice" data-mode="race" hidden>
+          <strong>Race:</strong> you (red) and the live fly (yellow) on the same fresh level.
+          Space, click or tap flaps for you only.
+        </p>
+        <p class="mode-notice" data-mode="watch" hidden>
+          <strong>This is a replay of one real recorded run</strong>, not a live simulation. The brain
+          ran once, offline, in Python; what you see is that run, frame by frame.
+        </p>
+        <p class="placeholder-banner" id="placeholder-banner" role="alert" hidden></p>
+        <p class="run-context" id="run-context" hidden></p>
+      </div>
+    </div>
 
-      <div class="stage-left">
+    <section class="stage" aria-label="Game and neural activity">
 
-        <div class="canvas-wrap">
-          <canvas id="game-canvas" width="400" height="512"
+      <div class="game">
+        <div class="screen">
+          <canvas id="game-canvas" width="800" height="1136"
             role="img"
             aria-label="Flappy Bird game canvas. A bird moves through a column of pipes; live text scores are below."
           >
@@ -55,243 +60,290 @@
             the text on this page.
           </canvas>
 
-          <p class="status-line" id="live-status" role="status"></p>
-
-          <!-- Live mode -->
-          <div class="stats" id="live-stats" hidden>
-            <div class="score-line" aria-live="polite" aria-atomic="true">
-              <span class="score-label">Pipes passed:</span>
-              <span class="score-value" id="live-pipes">0</span>
-            </div>
-            <div class="score-line">
-              <span class="score-label">Time survived:</span>
-              <span class="score-value" id="live-time">0.0 s</span>
-            </div>
-            <p class="hint" id="game-time-note">Game time, not wall-clock: frames × brain ms per frame.</p>
+          <div class="hud" id="live-hud" aria-live="polite" aria-atomic="true">
+            <span class="visually-hidden">Pipes passed:</span>
+            <span class="hud-score" id="live-pipes">0</span>
           </div>
 
-          <!-- Race mode -->
-          <div class="stats" id="race-stats" hidden>
-            <div class="race-legend" aria-hidden="true">
-              <span><span class="swatch swatch-human"></span>You (amber)</span>
-              <span><span class="swatch swatch-fly"></span>Fly (cyan)</span>
+          <div class="hud hud-race" id="race-hud" hidden>
+            <div class="hud-player hud-you" aria-live="polite" aria-atomic="true">
+              <span class="hud-label">You<span class="visually-hidden">, pipes passed:</span></span>
+              <span class="hud-score" id="race-human-pipes">0</span>
             </div>
-            <div class="score-line human-score-line">
-              <span aria-live="polite" aria-atomic="true">
-                <span class="score-label">Your pipes passed:</span>
-                <span class="score-value" id="race-human-pipes">0</span>
-              </span>
-              <span class="score-time" id="race-human-time">0.0 s</span>
-            </div>
-            <div class="score-line">
-              <span aria-live="polite" aria-atomic="true">
-                <span class="score-label">Fly pipes passed:</span>
-                <span class="score-value" id="race-fly-pipes">0</span>
-              </span>
-              <span class="score-time" id="race-fly-time">0.0 s</span>
-            </div>
-            <p class="hint" id="race-time-note">Game time, not wall-clock.</p>
-            <p class="hint" id="best-score-line"></p>
-          </div>
-
-          <!-- Recorded replay -->
-          <div class="stats" id="watch-stats" hidden>
-            <p class="status-line" id="watch-status" role="status"></p>
-            <div class="score-line" id="score-line" aria-live="polite">
-              <span class="score-label">Fly score:</span>
-              <span class="score-value" id="fly-score-text">0</span>
+            <div class="hud-player hud-fly" aria-live="polite" aria-atomic="true">
+              <span class="hud-label">Fly<span class="visually-hidden">, pipes passed:</span></span>
+              <span class="hud-score" id="race-fly-pipes">0</span>
             </div>
           </div>
 
-          <p class="game-over-line" id="game-over-line" aria-live="polite" hidden></p>
+          <div class="hud" id="watch-hud" hidden>
+            <div aria-live="polite" aria-atomic="true">
+              <span class="visually-hidden">Fly score:</span>
+              <span class="hud-score" id="fly-score-text">0</span>
+            </div>
+            <p class="screen-status" id="watch-status" role="status"></p>
+          </div>
+
+          <p class="screen-status" id="live-status" role="status"></p>
         </div>
 
-        <section class="controls" aria-label="Controls">
+        <p class="game-over-line" id="game-over-line" aria-live="polite" hidden></p>
 
-          <!-- Live and Race -->
-          <div class="transport" id="run-controls" role="group" aria-label="Game controls">
-            <button type="button" id="btn-live-play" disabled>Pause</button>
-            <button type="button" id="btn-new-level" disabled>New level <span class="btn-sub mono" id="level-number"></span></button>
-            <button type="button" id="btn-restart-level" disabled>Same level again</button>
-            <button type="button" id="btn-flap" disabled hidden>Flap (Space / tap)</button>
-            <div class="speed-group" id="live-speed-group" role="group" aria-label="Simulation speed">
-              <button type="button" class="speed-btn live-speed-btn" data-speed="0.5" disabled>0.5x</button>
-              <button type="button" class="speed-btn live-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1x</button>
-              <button type="button" class="speed-btn live-speed-btn" data-speed="2" disabled>2x</button>
-              <button type="button" class="speed-btn live-speed-btn" data-speed="4" disabled>4x</button>
-            </div>
-            <p class="hint" id="slow-note" role="status"></p>
-            <p class="hint" id="race-hint" hidden>Space (with the game focused), click or tap the canvas, or the Flap button flaps for you. Speed unlocks once you crash.</p>
+        <div class="readout" id="live-stats" hidden>
+          <p class="readout-line">
+            <span class="readout-label">Time survived</span>
+            <span class="readout-value" id="live-time">0.0 s</span>
+          </p>
+          <p class="hint" id="game-time-note"></p>
+        </div>
+
+        <div class="readout" id="race-stats" hidden>
+          <p class="readout-line">
+            <span class="readout-label"><span class="swatch swatch-human" aria-hidden="true"></span>You survived</span>
+            <span class="readout-value" id="race-human-time">0.0 s</span>
+          </p>
+          <p class="readout-line">
+            <span class="readout-label"><span class="swatch swatch-fly" aria-hidden="true"></span>Fly survived</span>
+            <span class="readout-value" id="race-fly-time">0.0 s</span>
+          </p>
+          <p class="hint" id="race-time-note"></p>
+          <p class="hint" id="best-score-line"></p>
+        </div>
+
+        <div class="controls" id="run-controls" role="group" aria-label="Game controls">
+          <div class="control-row">
+            <button type="button" class="btn btn-primary" id="btn-live-play" disabled>Pause</button>
+            <button type="button" class="btn" id="btn-new-level" disabled>New level <span class="btn-sub" id="level-number"></span></button>
+            <button type="button" class="btn" id="btn-restart-level" disabled>Same level again</button>
           </div>
-
-          <!-- Pokes: Live and the fly in Race -->
-          <fieldset class="pokes" id="pokes">
-            <legend>Pokes (act on the live fly)</legend>
-            <p class="hint">Pokes are experiments on an interface fitted to the intact circuit. Blinding either eye or cutting the giant fiber crashes the fly within a few seconds. Dimming the eyes has a variable effect that depends on the level. Each poke takes effect on the next frame; spikes already travelling through the circuit take a moment to clear.</p>
-            <div class="poke-grid">
-              <button type="button" class="poke-toggle" id="poke-blind-left" aria-pressed="false" disabled>Blind left eye <span class="toggle-state" aria-hidden="true">off</span></button>
-              <button type="button" class="poke-toggle" id="poke-blind-right" aria-pressed="false" disabled>Blind right eye <span class="toggle-state" aria-hidden="true">off</span></button>
-              <button type="button" class="poke-toggle" id="poke-cut-gf" aria-pressed="false" disabled>Cut giant fiber <span class="toggle-state" aria-hidden="true">off</span></button>
-              <button type="button" class="poke-toggle" id="poke-no-inhibition" aria-pressed="false" disabled>Remove inhibition <span class="toggle-state" aria-hidden="true">off</span></button>
-            </div>
-            <div class="poke-slider">
-              <label for="poke-gain">Dim the eyes: <output id="poke-gain-value" for="poke-gain">100%</output> of normal input</label>
-              <input type="range" id="poke-gain" min="0" max="100" step="5" value="100" disabled>
-            </div>
-            <button type="button" id="btn-reset-brain" disabled>Reset brain (clears all pokes)</button>
-          </fieldset>
-
-          <!-- Recorded replay -->
-          <div class="transport" id="watch-controls" hidden>
-            <button type="button" id="btn-play-pause" disabled>Pause</button>
-            <button type="button" id="btn-restart" disabled>Restart</button>
-            <div class="speed-group" role="group" aria-label="Playback speed">
-              <button type="button" class="speed-btn watch-speed-btn" data-speed="0.5" disabled>0.5x</button>
-              <button type="button" class="speed-btn watch-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1x</button>
-              <button type="button" class="speed-btn watch-speed-btn" data-speed="2" disabled>2x</button>
-            </div>
+          <button type="button" class="btn btn-flap" id="btn-flap" disabled hidden>Flap</button>
+          <div class="speed-group" id="live-speed-group" role="group" aria-label="Simulation speed">
+            <span class="speed-label" aria-hidden="true">Speed</span>
+            <button type="button" class="speed-btn live-speed-btn" data-speed="0.5" aria-pressed="false" disabled>0.5×</button>
+            <button type="button" class="speed-btn live-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1×</button>
+            <button type="button" class="speed-btn live-speed-btn" data-speed="2" aria-pressed="false" disabled>2×</button>
+            <button type="button" class="speed-btn live-speed-btn" data-speed="4" aria-pressed="false" disabled>4×</button>
           </div>
+          <p class="hint" id="slow-note" role="status"></p>
+          <p class="hint" id="race-hint" hidden>Flap with Space, a tap on the game, or the Flap button. Speed unlocks once you crash.</p>
+        </div>
 
-        </section>
+        <div class="controls" id="watch-controls" hidden>
+          <div class="control-row">
+            <button type="button" class="btn btn-primary" id="btn-play-pause" disabled>Pause</button>
+            <button type="button" class="btn" id="btn-restart" disabled>Restart</button>
+          </div>
+          <div class="speed-group" role="group" aria-label="Playback speed">
+            <span class="speed-label" aria-hidden="true">Speed</span>
+            <button type="button" class="speed-btn watch-speed-btn" data-speed="0.5" aria-pressed="false" disabled>0.5×</button>
+            <button type="button" class="speed-btn watch-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1×</button>
+            <button type="button" class="speed-btn watch-speed-btn" data-speed="2" aria-pressed="false" disabled>2×</button>
+          </div>
+        </div>
       </div>
 
-      <div class="stage-right">
+      <div class="lab">
 
         <!-- Live and Race activity -->
-        <aside class="activity-panel" id="live-activity" aria-label="Live neuron activity">
-          <h2>Neural activity <span class="muted">(live)</span></h2>
+        <section class="panel" id="live-activity" aria-labelledby="live-activity-heading">
+          <div class="panel-head">
+            <h2 id="live-activity-heading">The fly's circuit</h2>
+            <span class="tag">live</span>
+          </div>
           <p class="poke-summary" id="poke-summary" aria-live="polite">Pokes: none</p>
 
-          <div class="activity-block">
-            <h3 id="live-input-heading">Input neurons (looming detection)</h3>
-            <p class="hint" id="live-input-hint">
-              One column per game frame, one row per input-seed neuron; newest on the right.
-              Brighter = more spikes that frame.
-            </p>
+          <div class="trace">
+            <div class="trace-head">
+              <h3 id="live-input-heading"><span class="key key-input" aria-hidden="true"></span>Input neurons (looming detection)</h3>
+            </div>
             <div class="raster-wrap">
               <canvas id="live-input-canvas" role="img" width="240" height="80" aria-labelledby="live-input-heading"></canvas>
             </div>
+            <p class="hint" id="live-input-hint">One row per input neuron, one column per frame, newest on the right. Brighter = more spikes.</p>
           </div>
 
-          <div class="activity-block">
-            <h3 id="live-dn-heading">Descending output neurons</h3>
-            <p class="hint">The 10 escape neurons the fitted interface reads to decide flap/no-flap: spikes in the latest frame.</p>
+          <div class="trace">
+            <div class="trace-head">
+              <h3 id="live-dn-heading"><span class="key key-escape" aria-hidden="true"></span>Descending escape neurons</h3>
+              <div class="flap-row">
+                <span class="flap-dot" id="live-flap-dot" aria-hidden="true"></span>
+                <span>Flap</span>
+                <span class="visually-hidden">this frame: <span id="live-flap-text">no</span></span>
+              </div>
+            </div>
             <div class="dn-bars" id="live-dn-bars" aria-labelledby="live-dn-heading"></div>
+            <p class="hint">What the fitted interface reads to decide each flap: spikes in the latest frame.</p>
           </div>
 
-          <div class="activity-block">
-            <h3 id="live-gf-heading">Giant fiber (DNp01)</h3>
-            <p class="hint">The escape-triggering descending neuron, R and L, spikes per frame, scrolling. Flat when the giant fiber is cut.</p>
+          <div class="trace">
+            <div class="trace-head">
+              <h3 id="live-gf-heading"><span class="key key-gf" aria-hidden="true"></span>Giant fiber (DNp01)</h3>
+            </div>
             <div class="raster-wrap gf-wrap">
               <canvas id="live-gf-canvas" role="img" width="240" height="40" aria-labelledby="live-gf-heading"></canvas>
             </div>
+            <p class="hint">The escape-triggering neuron, R solid and L faded, spikes per frame. Flat when cut.</p>
           </div>
+        </section>
 
-          <div class="flap-row">
-            <span>Fly flaps this frame:</span>
-            <span class="flap-dot" id="live-flap-dot" aria-hidden="true"></span>
-            <span class="visually-hidden" id="live-flap-text">no</span>
+        <!-- Pokes: Live and the fly in Race -->
+        <fieldset class="panel pokes" id="pokes">
+          <legend class="panel-legend">Poke the fly's circuit</legend>
+          <p class="hint pokes-lede">Experiments on an interface fitted to the intact circuit. Blinding an eye or cutting the giant fiber crashes the fly within seconds; dimming the eyes has a variable effect that depends on the level.</p>
+          <div class="poke-grid">
+            <button type="button" class="poke-toggle" id="poke-blind-left" aria-pressed="false" disabled>Blind left eye <span class="toggle-state" aria-hidden="true">off</span></button>
+            <button type="button" class="poke-toggle" id="poke-blind-right" aria-pressed="false" disabled>Blind right eye <span class="toggle-state" aria-hidden="true">off</span></button>
+            <button type="button" class="poke-toggle" id="poke-cut-gf" aria-pressed="false" disabled>Cut giant fiber <span class="toggle-state" aria-hidden="true">off</span></button>
+            <button type="button" class="poke-toggle" id="poke-no-inhibition" aria-pressed="false" disabled>Remove inhibition <span class="toggle-state" aria-hidden="true">off</span></button>
           </div>
-        </aside>
+          <div class="poke-slider">
+            <label for="poke-gain">Dim the eyes <output id="poke-gain-value" for="poke-gain">100%</output> <span class="slider-sub">of normal input</span></label>
+            <input type="range" id="poke-gain" min="0" max="100" step="5" value="100" disabled>
+          </div>
+          <div class="pokes-foot">
+            <button type="button" class="poke-reset" id="btn-reset-brain" disabled>Reset brain (clears all pokes)</button>
+            <p class="hint">Each poke takes effect on the next frame; spikes already travelling through the circuit take a moment to clear.</p>
+          </div>
+        </fieldset>
 
         <!-- Recorded replay activity -->
-        <aside class="activity-panel" id="watch-activity" aria-label="Neuron activity" hidden>
-          <h2>Neural activity <span class="muted">(recorded, same run)</span></h2>
+        <section class="panel" id="watch-activity" aria-labelledby="watch-activity-heading" hidden>
+          <div class="panel-head">
+            <h2 id="watch-activity-heading">The fly's circuit</h2>
+            <span class="tag">recorded, same run</span>
+          </div>
 
-          <div class="activity-block" id="input-block" hidden>
-            <h3 id="input-heading">Input neurons (looming detection)</h3>
-            <p class="hint">
-              One column per frame, one row per input-seed neuron (LC4 / LPLC2 looming detectors).
-              Brighter = more spikes that frame. This is the visual input arriving, before the
-              escape decision below.
-            </p>
+          <div class="trace" id="input-block" hidden>
+            <div class="trace-head">
+              <h3 id="input-heading"><span class="key key-input" aria-hidden="true"></span>Input neurons (looming detection)</h3>
+            </div>
             <div class="raster-wrap">
               <canvas id="input-raster-canvas" role="img" width="600" height="80" aria-labelledby="input-heading"></canvas>
               <div class="playhead" id="input-playhead" aria-hidden="true"></div>
             </div>
+            <p class="hint">One row per LC4 / LPLC2 looming detector, one column per frame. Brighter = more spikes. The visual input arriving, before the escape decision below.</p>
           </div>
 
-          <div class="activity-block">
-            <h3 id="dn-heading">Descending output neurons</h3>
-            <p class="hint">The output-seed neurons the fitted interface reads to decide flap/no-flap.</p>
+          <div class="trace">
+            <div class="trace-head">
+              <h3 id="dn-heading"><span class="key key-escape" aria-hidden="true"></span>Descending escape neurons</h3>
+              <div class="flap-row">
+                <span class="flap-dot" id="flap-dot" aria-hidden="true"></span>
+                <span>Flap</span>
+                <span class="visually-hidden">this frame: <span id="flap-text">no</span></span>
+              </div>
+            </div>
             <div class="dn-bars" id="dn-bars" aria-labelledby="dn-heading"></div>
+            <p class="hint">The output neurons the fitted interface reads to decide flap or no flap.</p>
           </div>
 
-          <div class="activity-block">
-            <h3 id="raster-heading">Interneurons</h3>
-            <p class="hint">One column per frame. Brighter = more spikes that frame.</p>
+          <div class="trace">
+            <div class="trace-head">
+              <h3 id="raster-heading"><span class="key key-inter" aria-hidden="true"></span>Interneurons</h3>
+            </div>
             <div class="raster-wrap">
               <canvas id="raster-canvas" role="img" width="600" height="120" aria-labelledby="raster-heading"></canvas>
               <div class="playhead" id="raster-playhead" aria-hidden="true"></div>
             </div>
+            <p class="hint">One column per frame. Brighter = more spikes that frame.</p>
           </div>
 
-          <div class="activity-block">
-            <h3 id="gf-heading">Giant fiber (DNp01)</h3>
-            <p class="hint">The escape-triggering descending neuron, R and L. Shown separately; this model cannot habituate.</p>
+          <div class="trace">
+            <div class="trace-head">
+              <h3 id="gf-heading"><span class="key key-gf" aria-hidden="true"></span>Giant fiber (DNp01)</h3>
+            </div>
             <div class="raster-wrap gf-wrap">
               <canvas id="gf-canvas" role="img" width="600" height="60" aria-labelledby="gf-heading"></canvas>
               <div class="playhead" id="gf-playhead" aria-hidden="true"></div>
             </div>
+            <p class="hint">The escape-triggering neuron, R and L. This model cannot habituate.</p>
           </div>
-
-          <div class="flap-row">
-            <span>Flap this frame:</span>
-            <span class="flap-dot" id="flap-dot" aria-hidden="true"></span>
-            <span class="visually-hidden" id="flap-text">no</span>
-          </div>
-        </aside>
+        </section>
 
       </div>
+    </section>
 
+  </main>
+</div>
+
+<div class="ground" aria-hidden="true"></div>
+
+<article class="explainer">
+  <h2>How this works</h2>
+
+  <div class="split" id="connectome-explainer">
+    <div class="split-item">
+      <h3>Frozen</h3>
+      <p>
+        The <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">connectome</a>: the
+        wiring diagram of a real fruit fly's brain, down to individual synapses. It is never changed.
+        A <span class="n-neurons"></span>sub-circuit around the fly's looming-detection and escape
+        pathways is simulated from that measured wiring (the
+        <a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/RESULTS.md#limitations" rel="noopener">limitations</a>
+        list what is approximated).
+      </p>
     </div>
-  </section>
+    <div class="split-item">
+      <h3>Fitted</h3>
+      <p>
+        A thin interface: how the pipe's distance and the bird's height relative to the gap become
+        input to the looming neurons, and how the escape neurons' spikes become a flap. The brain did
+        not learn Flappy Bird; the interface around it was fitted.
+      </p>
+    </div>
+  </div>
 
-  <section class="explainer">
-    <h2>How this works</h2>
-    <p id="connectome-explainer">
-      The <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">connectome</a> —
-      the wiring diagram of a real fruit fly's brain, down to individual synapses — is never
-      changed. A small sub-circuit around the fly's visual looming-detection and escape pathways
-      is simulated from that measured wiring. The only thing that was <strong>fitted</strong> to this game is a
-      thin interface: how the pipe's distance and the bird's height relative to the gap turn into simulated visual input, and how a
-      spike-count readout turns into a flap decision. The brain did not learn Flappy Bird; the
-      interface around it was fitted.
+  <section class="doing" id="brain-doing" hidden>
+    <h3>What the brain is doing</h3>
+    <p class="doing-scope">From the offline runs, on levels capped at 1,500 frames.</p>
+    <p>
+      The interface already tells the circuit whether the gap is above or below, by which side's
+      looming neurons it drives. The circuit's job is to carry that left/right signal to the escape
+      neurons while keeping the two sides largely separate.
     </p>
     <p>
-      <strong>Looming neurons</strong> respond to an object growing larger in the visual field —
-      here, an oncoming pipe. <strong>Escape neurons</strong>, including the giant fiber
-      <span class="mono">DNp01</span>, are the fly's fast last-resort motor command; in this demo
-      that command is read out as the flap decision.
+      A one-line rule using the same signal, with no brain at all, scores
+      <span class="num" id="rule-baseline"></span>, so the circuit is not solving the game. Shuffled
+      versions of the same wiring lose that left/right separation and are also much more active
+      overall; all <span id="control-runs"></span> of them scored <span class="num" id="control-best"></span>
+      or less. Which of those differences makes them fail was not tested
+      (<a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/EXPLORATORY.md" rel="noopener">details</a>).
     </p>
-    <p>
-      The scores and run statistics on this page come from the offline runs, on levels capped at 1,500 frames.
-      Live and race levels have no frame cap, so a long-lived fly keeps scoring until it crashes.
-      Each level number is a random seed: the same number gives the same pipes.
-    </p>
-    <h3 class="explainer-sub">Recorded run</h3>
-    <dl class="meta-grid" id="meta-grid" aria-label="Run metadata"></dl>
   </section>
 
-  <p class="parity-note">
-    Physics verified against the Python engine: this page's game physics were checked frame-by-frame
-    against the recorded Python run (<span class="mono">node docs-site/parity.test.mjs</span>) and match exactly.
-    The live brain is checked on average rates and scores, not spike for spike
-    (<span class="mono">node docs-site/live.test.mjs</span>).
-  </p>
+  <dl class="glossary">
+    <div>
+      <dt>Looming neurons</dt>
+      <dd>Respond to an object growing larger in the visual field: here, an oncoming pipe.</dd>
+    </div>
+    <div>
+      <dt>Escape neurons</dt>
+      <dd>Including the giant fiber <span class="num">DNp01</span>, the fly's fast last-resort motor command. In this demo that command is read out as the flap decision.</dd>
+    </div>
+    <div>
+      <dt>Levels</dt>
+      <dd>The scores and run statistics on this page come from the offline runs, on levels capped at 1,500 frames. Live and race levels have no frame cap, so a long-lived fly keeps scoring until it crashes. Each level number is a random seed: the same number gives the same pipes.</dd>
+    </div>
+  </dl>
 
-</main>
+  <h3 class="meta-title">Recorded run</h3>
+  <dl class="meta-grid" id="meta-grid" aria-label="Run metadata"></dl>
+</article>
 
 <footer class="site-footer">
-  <p>
-    <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">Source on GitHub</a>
+  <p class="parity-note">
+    Game physics were checked frame by frame against the recorded Python run
+    (<span class="num">node docs-site/parity.test.mjs</span>) and match exactly. The live brain is
+    checked on average rates and scores, not spike for spike
+    (<span class="num">node docs-site/live.test.mjs</span>).
   </p>
   <p class="data-credit" id="data-credit-line">
     Connectome data: MaleCNS v1.0, Janelia / Google, CC-BY. See
     <a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/DATA.md" rel="noopener">docs/DATA.md</a>.
   </p>
+  <p><a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">Source on GitHub</a></p>
 </footer>
 
-<script type="module" src="app.js?v=6"></script>
+<script type="module" src="app.js?v=7"></script>
 </body>
 </html>

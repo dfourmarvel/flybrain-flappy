@@ -18,43 +18,50 @@ eyes apart. Mean of 4 trials per condition.
 - Real connectome: **0.639**
 - Shuffled controls (n = 30): median **0.001**, range -0.021 to 0.027
 
-| network | left eye: left DN / right DN (Hz) | right eye: right DN / left DN (Hz) | lateralization | held-out mean |
-|---|---|---|---|---|
-| real | 313.9 / 71.8 | 298.3 / 62.9 | 0.639 | median 18.12 (n=30) |
-| control_00 | 220.9 / 240.1 | 248.6 / 221.0 | 0.009 | 0.00 |
-| control_01 | 217.2 / 262.2 | 268.8 / 221.7 | 0.002 | 0.00 |
-| control_02 | 248.1 / 243.7 | 256.6 / 254.3 | 0.007 | 0.00 |
-| control_03 | 162.4 / 189.4 | 201.9 / 155.6 | 0.027 | 0.05 |
-| control_04 | 215.8 / 185.7 | 173.3 / 198.6 | 0.006 | 0.00 |
-| control_05 | 233.8 / 248.4 | 242.1 / 226.8 | 0.001 | 0.00 |
-| control_06 | 277.1 / 243.8 | 248.7 / 278.4 | 0.003 | 0.00 |
-| control_07 | 205.6 / 256.7 | 251.4 / 187.8 | 0.014 | 0.00 |
-| control_08 | 211.2 / 200.9 | 211.2 / 204.5 | 0.021 | 0.00 |
-| control_09 | 209.9 / 229.3 | 232.9 / 202.8 | 0.012 | 0.00 |
-| control_10 | 225.8 / 200.1 | 201.2 / 225.8 | 0.001 | 0.00 |
-| control_11 | 202.3 / 232.6 | 230.9 / 201.3 | -0.001 | 0.00 |
-| control_12 | 221.6 / 187.7 | 171.2 / 215.8 | -0.013 | 0.00 |
-| control_13 | 238.3 / 220.4 | 223.1 / 242.3 | -0.002 | 0.00 |
-| control_14 | 193.2 / 200.2 | 207.1 / 184.6 | 0.020 | 0.00 |
-| control_15 | 208.2 / 220.9 | 218.4 / 213.3 | -0.009 | 0.00 |
-| control_16 | 271.9 / 195.7 | 205.7 / 281.1 | 0.001 | 0.00 |
-| control_17 | 208.3 / 271.8 | 273.2 / 212.6 | -0.003 | 0.00 |
-| control_18 | 258.6 / 222.0 | 232.2 / 268.1 | 0.001 | 0.00 |
-| control_19 | 131.6 / 155.8 | 167.5 / 135.1 | 0.014 | 0.00 |
-| control_20 | 191.4 / 214.8 | 206.7 / 188.4 | -0.007 | 0.00 |
-| control_21 | 254.8 / 251.1 | 250.6 / 243.6 | 0.011 | 0.00 |
-| control_22 | 184.4 / 187.5 | 195.2 / 196.7 | -0.006 | 0.00 |
-| control_23 | 208.7 / 194.1 | 176.6 / 208.0 | -0.021 | 0.00 |
-| control_24 | 226.9 / 186.2 | 195.9 / 238.0 | -0.002 | 0.00 |
-| control_25 | 227.7 / 180.3 | 185.3 / 234.5 | -0.002 | 0.00 |
-| control_26 | 235.5 / 154.0 | 144.6 / 240.4 | -0.019 | 0.00 |
-| control_27 | 211.8 / 208.8 | 211.3 / 205.2 | 0.011 | 0.00 |
-| control_28 | 215.9 / 190.8 | 187.8 / 223.3 | -0.013 | 0.00 |
-| control_29 | 260.1 / 137.1 | 130.3 / 248.7 | 0.006 | 0.00 |
+A second difference, measured in the same simulations: the shuffled networks are much
+more active overall. Mean firing of all non-input neurons was 14.1 Hz in the
+real connectome and 42.5 Hz (median; range 32.4 to
+53.1) in the shuffles, about 3.0 times
+higher. Either difference could contribute to the controls failing; this analysis
+cannot separate them.
+
+| network | left eye: left DN / right DN (Hz) | right eye: right DN / left DN (Hz) | lateralization | network Hz | held-out mean |
+|---|---|---|---|---|---|
+| real | 313.9 / 71.8 | 298.3 / 62.9 | 0.639 | 14.1 | median 18.12 (n=30) |
+| control_00 | 220.9 / 240.1 | 248.6 / 221.0 | 0.009 | 49.6 | 0.00 |
+| control_01 | 217.2 / 262.2 | 268.8 / 221.7 | 0.002 | 46.7 | 0.00 |
+| control_02 | 248.1 / 243.7 | 256.6 / 254.3 | 0.007 | 45.8 | 0.00 |
+| control_03 | 162.4 / 189.4 | 201.9 / 155.6 | 0.027 | 37.9 | 0.05 |
+| control_04 | 215.8 / 185.7 | 173.3 / 198.6 | 0.006 | 39.9 | 0.00 |
+| control_05 | 233.8 / 248.4 | 242.1 / 226.8 | 0.001 | 46.6 | 0.00 |
+| control_06 | 277.1 / 243.8 | 248.7 / 278.4 | 0.003 | 48.5 | 0.00 |
+| control_07 | 205.6 / 256.7 | 251.4 / 187.8 | 0.014 | 42.0 | 0.00 |
+| control_08 | 211.2 / 200.9 | 211.2 / 204.5 | 0.021 | 45.8 | 0.00 |
+| control_09 | 209.9 / 229.3 | 232.9 / 202.8 | 0.012 | 40.5 | 0.00 |
+| control_10 | 225.8 / 200.1 | 201.2 / 225.8 | 0.001 | 47.1 | 0.00 |
+| control_11 | 202.3 / 232.6 | 230.9 / 201.3 | -0.001 | 38.9 | 0.00 |
+| control_12 | 221.6 / 187.7 | 171.2 / 215.8 | -0.013 | 42.5 | 0.00 |
+| control_13 | 238.3 / 220.4 | 223.1 / 242.3 | -0.002 | 38.9 | 0.00 |
+| control_14 | 193.2 / 200.2 | 207.1 / 184.6 | 0.020 | 40.2 | 0.00 |
+| control_15 | 208.2 / 220.9 | 218.4 / 213.3 | -0.009 | 37.5 | 0.00 |
+| control_16 | 271.9 / 195.7 | 205.7 / 281.1 | 0.001 | 48.4 | 0.00 |
+| control_17 | 208.3 / 271.8 | 273.2 / 212.6 | -0.003 | 53.1 | 0.00 |
+| control_18 | 258.6 / 222.0 | 232.2 / 268.1 | 0.001 | 40.0 | 0.00 |
+| control_19 | 131.6 / 155.8 | 167.5 / 135.1 | 0.014 | 32.4 | 0.00 |
+| control_20 | 191.4 / 214.8 | 206.7 / 188.4 | -0.007 | 34.9 | 0.00 |
+| control_21 | 254.8 / 251.1 | 250.6 / 243.6 | 0.011 | 42.5 | 0.00 |
+| control_22 | 184.4 / 187.5 | 195.2 / 196.7 | -0.006 | 40.7 | 0.00 |
+| control_23 | 208.7 / 194.1 | 176.6 / 208.0 | -0.021 | 42.6 | 0.00 |
+| control_24 | 226.9 / 186.2 | 195.9 / 238.0 | -0.002 | 43.2 | 0.00 |
+| control_25 | 227.7 / 180.3 | 185.3 / 234.5 | -0.002 | 40.6 | 0.00 |
+| control_26 | 235.5 / 154.0 | 144.6 / 240.4 | -0.019 | 41.9 | 0.00 |
+| control_27 | 211.8 / 208.8 | 211.3 / 205.2 | 0.011 | 48.6 | 0.00 |
+| control_28 | 215.9 / 190.8 | 187.8 / 223.3 | -0.013 | 43.2 | 0.00 |
+| control_29 | 260.1 / 137.1 | 130.3 / 248.7 | 0.006 | 42.6 | 0.00 |
 
 ## How to read this
 
-The real fly's wiring keeps the two sides separate on the way from the eye's looming
+The real connectome, in this model, keeps the two sides separate on the way from the looming
 detectors to the escape neurons. A degree-preserving shuffle keeps every neuron's number
 of connections and neurotransmitter but scrambles *which* neurons connect, and that
 removes the separation.
@@ -64,4 +71,6 @@ or below the gap" as a left/right split of the input neurons (PLAN Step 5 — an
 interface convention with no biological meaning). A task or encoding that did not need
 left/right separation might not favour the real wiring in the same way. The accurate
 claim is: the real connectome preserves left/right separation that shuffling destroys,
-and this task depends on it.
+and this task, as encoded, plausibly depends on it. That dependence was not tested
+directly: no shuffle that keeps each side's wiring separate was run, and the shuffles
+also differ in overall activity (above).

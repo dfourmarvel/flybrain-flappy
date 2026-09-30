@@ -57,7 +57,8 @@ DESCRIPTION = (
     "bird's exact per-frame trajectory and flap decisions; `activity` gives per-frame spike "
     "counts for a subset of neurons (all 10 output-seed descending neurons plus the "
     "highest-traffic interneurons this episode); `gf` isolates the two DNp01 giant-fiber "
-    "neurons for the habituation result. See docs/RESULTS.md for what is frozen vs fitted."
+    "neurons (this model has no adaptation, so they cannot habituate). See docs/RESULTS.md for "
+    "what is frozen vs fitted."
 )
 
 SCHEMA = {
@@ -81,6 +82,12 @@ SCHEMA = {
     "meta.score": "int, the fly's final score this episode.",
     "meta.frames": "int, number of frames recorded (episode length; capped at config.max_frames).",
     "meta.description": "str, one-paragraph plain-language summary of this file.",
+    "meta.context": (
+        "object: where this run sits among all finished runs. real_runs, this_run_rank (1 = best "
+        "held-out mean), real_median, real_runs_at_or_below_3_3, control_runs, control_best, and "
+        "rule_baseline (held-out mean of a brain-free one-line rule on the same information the "
+        "interface gives the brain -- see docs/RESULTS.md, C1)."
+    ),
     "meta.schema": "object, this field-by-field description.",
     "config": (
         "object, every GameConfig field (docs/PLAN.md Step 4), all numbers. config.frame_ms is "
@@ -421,6 +428,9 @@ def build_replay(run_dir: Path, seed: int | None = None, max_frames: int | None 
             "score": int(episode["final_score"]),
             "frames": int(episode["frames"]),
             "description": DESCRIPTION,
+            # Context so the page can say honestly where this run sits: the demo shows the best
+            # run, not a typical one.
+            "context": _arm_context(run_dir, float(heldout["mean"])),
             "schema": SCHEMA,
         },
         "config": {k: v for k, v in asdict(game_config).items()},
@@ -430,6 +440,34 @@ def build_replay(run_dir: Path, seed: int | None = None, max_frames: int | None 
         "gf": gf,
     }
     return replay
+
+
+def _arm_context(run_dir: Path, this_mean: float) -> dict:
+    """Where this run sits among the finished runs of both arms, plus the brain-free rule
+    baseline, all computed from the runs tree."""
+    from flybrain.analyse import rule_baseline
+
+    runs_root = Path(run_dir).parent.parent
+
+    def means(pattern):
+        out = []
+        for f in runs_root.glob(pattern):
+            m = json.loads(f.read_text(encoding="utf-8")).get("mean")
+            if m is not None and m == m:
+                out.append(float(m))
+        return sorted(out)
+
+    real = means("real/seed_*/heldout.json")
+    ctrl = means("control_*/seed_*/heldout.json")
+    return {
+        "real_runs": len(real),
+        "this_run_rank": 1 + sum(m > this_mean for m in real),
+        "real_median": float(np.median(real)) if real else None,
+        "real_runs_at_or_below_3_3": sum(m <= 3.3 for m in real),
+        "control_runs": len(ctrl),
+        "control_best": max(ctrl) if ctrl else None,
+        "rule_baseline": rule_baseline(),
+    }
 
 
 def write_replay(replay: dict, out_path: Path) -> int:

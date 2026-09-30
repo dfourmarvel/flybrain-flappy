@@ -48,6 +48,7 @@ def lateralization(W, neurons) -> dict:
     n = W.shape[0]
 
     rates = {}
+    background = []
     for eye in ("L", "R"):
         sim = Simulator(W, n_candidates=N_TRIALS, dt=0.2,
                         seeds=np.arange(N_TRIALS, dtype=np.uint64) + SEED_BASE)
@@ -55,6 +56,7 @@ def lateralization(W, neurons) -> dict:
         drive[:, inp & (side == eye)] = DRIVE_HZ
         mean_hz = sim.run(N_STEPS, drive).mean(0)  # 1 s window, so counts == Hz
         rates[eye] = (float(mean_hz[out_l].mean()), float(mean_hz[out_r].mean()))
+        background.append(float(mean_hz[~inp].mean()))  # every non-input neuron
 
     same_l, opp_l = rates["L"]
     opp_r, same_r = rates["R"]
@@ -62,7 +64,8 @@ def lateralization(W, neurons) -> dict:
     li = ((same_l - opp_l) + (same_r - opp_r)) / total if total > 0 else float("nan")
     return {"left_eye": {"left_dn_hz": same_l, "right_dn_hz": opp_l},
             "right_eye": {"right_dn_hz": same_r, "left_dn_hz": opp_r},
-            "lateralization": li}
+            "lateralization": li,
+            "network_hz": float(np.mean(background))}
 
 
 def heldout_mean(network: str) -> list[float]:
@@ -87,6 +90,8 @@ def main(argv=None) -> None:
 
     real_li = rows[0][1]["lateralization"]
     ctrl_li = np.array([r[1]["lateralization"] for r in rows[1:]])
+    real_hz = rows[0][1]["network_hz"]
+    ctrl_hz = np.array([r[1]["network_hz"] for r in rows[1:]])
     print(f"real: {real_li:.3f} | controls: median {np.median(ctrl_li):.3f}, "
           f"max {ctrl_li.max():.3f}, n={ctrl_li.size}")
 
@@ -112,9 +117,16 @@ def main(argv=None) -> None:
         f"- Shuffled controls (n = {ctrl_li.size}): median **{np.median(ctrl_li):.3f}**, "
         f"range {ctrl_li.min():.3f} to {ctrl_li.max():.3f}",
         "",
+        "A second difference, measured in the same simulations: the shuffled networks are much",
+        f"more active overall. Mean firing of all non-input neurons was {real_hz:.1f} Hz in the",
+        f"real connectome and {np.median(ctrl_hz):.1f} Hz (median; range {ctrl_hz.min():.1f} to",
+        f"{ctrl_hz.max():.1f}) in the shuffles, about {np.median(ctrl_hz) / real_hz:.1f} times",
+        "higher. Either difference could contribute to the controls failing; this analysis",
+        "cannot separate them.",
+        "",
         "| network | left eye: left DN / right DN (Hz) | right eye: right DN / left DN (Hz) "
-        "| lateralization | held-out mean |",
-        "|---|---|---|---|---|",
+        "| lateralization | network Hz | held-out mean |",
+        "|---|---|---|---|---|---|",
     ]
     for name, d, means in rows:
         held = ", ".join(f"{m:.2f}" for m in means) if name != "real" else (
@@ -124,12 +136,12 @@ def main(argv=None) -> None:
         lines.append(
             f"| {name} | {d['left_eye']['left_dn_hz']:.1f} / {d['left_eye']['right_dn_hz']:.1f} "
             f"| {d['right_eye']['right_dn_hz']:.1f} / {d['right_eye']['left_dn_hz']:.1f} "
-            f"| {d['lateralization']:.3f} | {held} |")
+            f"| {d['lateralization']:.3f} | {d['network_hz']:.1f} | {held} |")
     lines += [
         "",
         "## How to read this",
         "",
-        "The real fly's wiring keeps the two sides separate on the way from the eye's looming",
+        "The real connectome, in this model, keeps the two sides separate on the way from the looming",
         "detectors to the escape neurons. A degree-preserving shuffle keeps every neuron's number",
         "of connections and neurotransmitter but scrambles *which* neurons connect, and that",
         "removes the separation.",
@@ -139,7 +151,9 @@ def main(argv=None) -> None:
         "interface convention with no biological meaning). A task or encoding that did not need",
         "left/right separation might not favour the real wiring in the same way. The accurate",
         "claim is: the real connectome preserves left/right separation that shuffling destroys,",
-        "and this task depends on it.",
+        "and this task, as encoded, plausibly depends on it. That dependence was not tested",
+        "directly: no shuffle that keeps each side's wiring separate was run, and the shuffles",
+        "also differ in overall activity (above).",
         "",
     ]
     Path(args.out).write_bytes("\n".join(lines).encode("utf-8"))

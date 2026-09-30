@@ -32,6 +32,7 @@ const els = {
   dnBars: document.getElementById("dn-bars"),
   placeholderBanner: document.getElementById("placeholder-banner"),
   connectomeExplainer: document.getElementById("connectome-explainer"),
+  runContext: document.getElementById("run-context"),
   dataCreditLine: document.getElementById("data-credit-line"),
   flapDot: document.getElementById("flap-dot"),
   flapText: document.getElementById("flap-text"),
@@ -182,14 +183,35 @@ function applyConnectomeProvenance() {
     els.placeholderBanner.hidden = true;
     els.placeholderBanner.textContent = "";
 
+    const ctx = data.meta.context || null;
     els.connectomeExplainer.innerHTML =
       `The <a href="https://github.com/dfourmarvel/flybrain-flappy" rel="noopener">connectome</a> — ` +
       `the wiring diagram of a real fruit fly's brain, down to individual synapses — is never ` +
-      `changed. A small sub-circuit around the fly's visual looming-detection and escape pathways ` +
-      `runs exactly as measured. The only thing that was <strong>fitted</strong> to this game is a ` +
-      `thin interface: how the game's pixels turn into simulated visual input, and how a ` +
-      `spike-count readout turns into a flap decision. The brain itself did not learn Flappy Bird — ` +
-      `the interface around it did.`;
+      `changed. A ${data.meta.n_neurons.toLocaleString()}-neuron sub-circuit around the fly's ` +
+      `looming-detection and escape pathways is simulated from that measured wiring (the ` +
+      `<a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/RESULTS.md#limitations" rel="noopener">limitations</a> ` +
+      `list what is approximated). The only thing <strong>fitted</strong> to this game is a thin ` +
+      `interface: how the pipe's distance and the bird's height relative to the gap become input ` +
+      `to the looming neurons, and how the escape neurons' spikes become a flap. The brain did not ` +
+      `learn Flappy Bird; the interface around it was fitted.` +
+      (ctx
+        ? `<br><br><strong>What the brain is doing.</strong> The interface already tells it whether ` +
+          `the gap is above or below, by which side's looming neurons it drives. The circuit's job ` +
+          `is to carry that left/right signal to the escape neurons without mixing the two sides. ` +
+          `A one-line rule using the same signal, with no brain at all, scores ` +
+          `<span class="mono">${ctx.rule_baseline.toFixed(2)}</span>, so the circuit is not ` +
+          `solving the game. Shuffled versions of the same wiring mix the sides: all ` +
+          `${ctx.control_runs} of them scored <span class="mono">${ctx.control_best.toFixed(2)}</span> or less.`
+        : "");
+
+    if (ctx) {
+      els.runContext.innerHTML =
+        `This is the <strong>best of ${ctx.real_runs}</strong> fitted runs (held-out mean ` +
+        `<span class="mono">${data.meta.heldout_mean.toFixed(1)}</span> of 22 across 20 unseen levels). ` +
+        `The median run scored <span class="mono">${ctx.real_median.toFixed(1)}</span>; ` +
+        `${ctx.real_runs_at_or_below_3_3} of ${ctx.real_runs} scored 3.3 or less.`;
+      els.runContext.hidden = false;
+    }
 
     els.dataCreditLine.innerHTML =
       `Connectome data: ${escapeHtml(data.meta.connectome)}, Janelia / Google, CC-BY. See ` +

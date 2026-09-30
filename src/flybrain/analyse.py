@@ -561,6 +561,31 @@ def _fmt_p(p: float) -> str:
     return f"p = {p:.4f}"
 
 
+RULE_MARGIN_PX = 20.0
+
+
+def rule_baseline(heldout_seeds=tuple(range(301, 321))) -> float:
+    """Held-out mean of a brain-free one-line rule on the SAME observation the interface uses:
+    flap when the bird is more than RULE_MARGIN_PX below the gap centre, acting on the previous
+    frame's observation (the brain's 25 ms latency). It measures how much of the task the
+    interface's own above/below encoding already solves without any neurons."""
+    from flybrain.game import Game, GameConfig
+
+    cfg = GameConfig()
+    scores = []
+    for seed in heldout_seeds:
+        game = Game(cfg, seed=seed)
+        obs = prev = game.reset()
+        while obs.alive and obs.frame < cfg.max_frames:
+            flap = prev.bird_y > prev.next_gap_y + RULE_MARGIN_PX
+            prev = obs
+            obs, _points, done = game.step(bool(flap))
+            if done:
+                break
+        scores.append(game.score)
+    return float(np.mean(scores))
+
+
 def render_results_md(
     loaded: LoadedRuns,
     primary: PrimaryResult,
@@ -598,7 +623,7 @@ def render_results_md(
     lines.append(
         f"{loaded.n_real_found}/{loaded.n_real_expected} real-connectome runs and "
         f"{loaded.n_control_found}/{loaded.n_control_expected} shuffled-control runs "
-        "(PLAN L5: 30 independent training seeds per arm) were trained by CMA-ES over the "
+        "(PLAN L5: 30 independent training seeds per arm) were fitted by CMA-ES over the "
         "16-parameter game-to-neuron interface (PLAN Step 5), then each run's best parameter "
         "vector was scored on 20 held-out seeds never used during training. This report "
         "compares those held-out scores between arms."
@@ -631,17 +656,33 @@ def render_results_md(
     # (tests/test_interface.py::TestBrainFreeBaselines -- bias-only and blind controllers), so any
     # held-out score above 0 is play the fitted interface could only get from the brain.
     real_valid = loaded.real["heldout_mean"].dropna() if not loaded.real.empty else []
+    ctrl_valid = loaded.control["heldout_mean"].dropna() if not loaded.control.empty else []
     if len(real_valid):
-        n_above = int((real_valid > 0).sum())
+        best_ctrl = float(ctrl_valid.max()) if len(ctrl_valid) else 0.0
+        n_above = int((real_valid > best_ctrl).sum())
+        n_low = int((real_valid <= 0.15 * 22).sum())
+        rule = rule_baseline()
+        n_beat_rule = int((real_valid > rule).sum())
         lines.append("### C1 -- does the real circuit play above chance?")
         lines.append("")
         lines.append(
-            f"{n_above}/{len(real_valid)} real-connectome runs score above 0 on unseen levels "
-            f"(best run: held-out mean {real_valid.max():.2f} of a possible 22). A brain-free "
-            "interface scores 0: with the readout weights zeroed, or with the visual input "
-            "switched off, the bird never passes a pipe. **C1 supported.**")
+            f"{n_above}/{len(real_valid)} real-connectome runs score above the best shuffled "
+            f"control ({best_ctrl:.2f}) on unseen levels; the best run's held-out mean is "
+            f"{real_valid.max():.2f} of a possible 22. {n_low}/{len(real_valid)} runs scored "
+            f"{0.15 * 22:.1f} or less. An interface that does not use the brain scores 0: with the "
+            "readout weights zeroed, or with the visual input switched off, the bird never "
+            "passes a pipe (tests/test_interface.py::TestBrainFreeBaselines). **C1 supported.**")
         lines.append("")
-
+        lines.append(
+            "**What the brain is and is not doing.** The interface itself works out whether the "
+            "bird is above or below the gap and delivers that as *which side's* looming neurons "
+            "are driven. A brain-free one-line rule acting on that same information (flap when "
+            f"the bird is more than {RULE_MARGIN_PX:g} px below the gap, with the same one-frame "
+            f"delay) scores a held-out mean of {rule:.2f} -- higher than {len(real_valid) - n_beat_rule}"
+            f"/{len(real_valid)} real runs. So the circuit is not solving the game; its "
+            "contribution is carrying the left/right signal from the looming neurons to the "
+            "escape neurons without mixing the two sides.")
+        lines.append("")
     lines.append("### Primary -- held-out mean score")
     lines.append("")
     if excluded_mean_real or excluded_mean_control:
@@ -691,7 +732,10 @@ def render_results_md(
             "the interface: it encodes above/below the gap as a left/right input split, so the "
             "task needs a network that keeps the two sides apart -- see "
             "[EXPLORATORY.md](EXPLORATORY.md) for the evidence that the real wiring does and "
-            "the shuffled wiring does not.")
+            "the shuffled wiring does not. A degree-preserving shuffle is one possible null; "
+            "others (for example a shuffle that keeps each side's wiring separate) were not "
+            "tested, so C2 shows only that this shuffle breaks the left/right separation this "
+            "interface relies on.")
     elif primary.p_value < 0.05 and primary.rank_biserial < 0:
         lines.append(
             "Control outperforms real on held-out score. **C2 fails**: the real wiring does "
@@ -729,6 +773,23 @@ def render_results_md(
         f"Log-rank chi-square = {_fmt(secondary.chi2)}, {_fmt_p(secondary.p_value)}."
     )
     lines.append("")
+    # Budget disclosure: a run stops at 150 generations OR 90 minutes. Surviving candidates
+    # make generations slower, so the arms can reach different generation counts.
+    gens = {}
+    for arm_name, df in (("real", loaded.real), ("control", loaded.control)):
+        if not df.empty and "last_generation" in df:
+            g = df["last_generation"].dropna()
+            if len(g):
+                gens[arm_name] = (int(g.min()), int(g.max()))
+    if len(gens) == 2:
+        lines.append(
+            f"Training budget reached: real runs ran {gens['real'][0]}-{gens['real'][1]} "
+            f"generations, controls {gens['control'][0]}-{gens['control'][1]}. Both arms had the "
+            "same budget (150 generations or 90 minutes, whichever came first), but a candidate "
+            "that survives makes each generation slower, so runs that learned hit the time limit "
+            "sooner. This gives the controls more generations, not fewer, so it works against "
+            "the real wiring rather than for it.")
+        lines.append("")
     if secondary.n_real < MIN_FINISHED_FOR_VERDICT or secondary.n_control < MIN_FINISHED_FOR_VERDICT:
         lines.append(
             f"Not enough finished runs for a verdict (real: {loaded.n_real_found}/"

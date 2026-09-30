@@ -98,6 +98,11 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     gfCanvas: $("live-gf-canvas"),
     flapDot: $("live-flap-dot"),
     flapText: $("live-flap-text"),
+    screen: canvas.parentElement,
+    screenCta: $("screen-cta"),
+    screenGo: $("screen-go"),
+    screenSame: $("screen-same"),
+    screenPause: $("screen-pause"),
   };
   const controlEls = [
     els.btnPlay, els.btnNewLevel, els.btnRestartLevel, els.btnFlap, ...els.speedBtns,
@@ -237,13 +242,17 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     }
     sizeGameCanvas(canvas, viewWidth, (st.game ?? { height: 512 }).height);
     if (st.loaded) beginKind();
-    else drawBlank();
+    else {
+      hideScreenControls();
+      drawBlank();
+    }
   }
 
   function leave() {
     st.resumeOnEnter = st.playing;
     pause();
     st.kind = null;
+    hideScreenControls();
     els.status.textContent = "";
     canvas.removeAttribute("tabindex");
   }
@@ -658,11 +667,32 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     els.btnPlay.disabled = over;
     els.btnFlap.disabled = !(race && st.playing && st.human && st.human.alive);
     els.speedGroup.hidden = race && !humanDone() ? true : false;
+    syncScreenControls(label, over);
     for (const b of els.speedBtns) {
       const on = parseFloat(b.dataset.speed) === st.speed;
       b.classList.toggle("is-active", on);
       b.setAttribute("aria-pressed", String(on));
     }
+  }
+
+  function hideScreenControls() {
+    els.screenCta.hidden = true;
+    els.screenPause.hidden = true;
+  }
+
+  // The on-game buttons: Play/Start/Resume in the middle while stopped, New/Same level after the
+  // game is over, and a pause button while it runs.
+  function syncScreenControls(label, over) {
+    if (!st.kind) return;
+    els.screenPause.hidden = !st.playing;
+    els.screenCta.hidden = st.playing;
+    setText(els.screenGo, over ? "New level" : label);
+    els.screenSame.hidden = !over;
+  }
+
+  // Keep the whole game in view when play starts from a control below it.
+  function revealScreen() {
+    els.screen.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion ? "auto" : "smooth" });
   }
 
   function requestFlap() {
@@ -672,7 +702,22 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
   function wire() {
     els.btnPlay.addEventListener("click", () => {
       if (st.playing) pause();
+      else {
+        play();
+        revealScreen();
+      }
+    });
+    // app.js drives the same on-game buttons in replay mode, when st.kind is null
+    els.screenGo.addEventListener("click", () => {
+      if (!st.kind || !st.loaded) return;
+      if (allDone()) startLevel(newSeed());
       else play();
+    });
+    els.screenSame.addEventListener("click", () => {
+      if (st.kind && st.loaded) startLevel(st.seed);
+    });
+    els.screenPause.addEventListener("click", () => {
+      if (st.kind) pause();
     });
     els.btnNewLevel.addEventListener("click", () => startLevel(newSeed()));
     els.btnRestartLevel.addEventListener("click", () => startLevel(st.seed));
@@ -694,15 +739,26 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     });
     els.btnResetBrain.addEventListener("click", resetBrain);
 
-    canvas.addEventListener("pointerdown", () => requestFlap());
+    // In a race that has not started yet, the first tap on the game starts it.
+    canvas.addEventListener("pointerdown", () => {
+      if (isRace() && st.loaded && !st.started && !allDone()) play();
+      requestFlap();
+    });
 
     // Space flaps only in Race, only for the human, and only when focus is on the game or the
     // page itself, so Space still presses whichever button has focus.
     window.addEventListener("keydown", (e) => {
-      if (e.code !== "Space" || !isRace() || !st.playing) return;
+      if (e.code !== "Space" || !isRace()) return;
       const t = e.target;
       const onControl = t instanceof Element && t !== canvas && t.closest("button, input, select, textarea, a, summary");
       if (onControl) return;
+      if (!st.playing) {
+        if (t === canvas && st.loaded && !st.started && !allDone()) {
+          e.preventDefault();
+          play();
+        }
+        return;
+      }
       e.preventDefault();
       if (!e.repeat) requestFlap();
     });

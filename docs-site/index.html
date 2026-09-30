@@ -85,9 +85,51 @@
           </div>
 
           <p class="screen-status" id="live-status" role="status"></p>
+          <p class="game-over-line" id="game-over-line" aria-live="polite" hidden></p>
+
+          <!-- Pointer shortcuts on the game itself, so it can be started, paused and restarted
+               without scrolling. They duplicate the labelled controls below, which keyboard and
+               screen-reader users reach normally, so they are hidden from both. -->
+          <div class="screen-cta" id="screen-cta" hidden>
+            <button type="button" class="btn btn-primary" id="screen-go" tabindex="-1" aria-hidden="true">Play</button>
+            <button type="button" class="btn" id="screen-same" tabindex="-1" aria-hidden="true" hidden>Same level</button>
+          </div>
+          <button type="button" class="screen-pause" id="screen-pause" tabindex="-1" aria-hidden="true" hidden>
+            <span></span><span></span>
+          </button>
         </div>
 
-        <p class="game-over-line" id="game-over-line" aria-live="polite" hidden></p>
+        <div class="controls" id="run-controls" role="group" aria-label="Game controls">
+          <div class="control-row">
+            <button type="button" class="btn btn-primary" id="btn-live-play" disabled>Pause</button>
+            <button type="button" class="btn" id="btn-new-level" disabled>New level <span class="btn-sub" id="level-number"></span></button>
+            <button type="button" class="btn" id="btn-restart-level" disabled>Same level again</button>
+          </div>
+          <button type="button" class="btn btn-flap" id="btn-flap" disabled hidden>Flap</button>
+          <div class="speed-group" id="live-speed-group" role="group" aria-label="Simulation speed">
+            <span class="speed-label" aria-hidden="true">Speed</span>
+            <button type="button" class="speed-btn live-speed-btn" data-speed="0.5" aria-pressed="false" disabled>0.5×</button>
+            <button type="button" class="speed-btn live-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1×</button>
+            <button type="button" class="speed-btn live-speed-btn" data-speed="2" aria-pressed="false" disabled>2×</button>
+            <button type="button" class="speed-btn live-speed-btn" data-speed="4" aria-pressed="false" disabled>4×</button>
+          </div>
+          <p class="hint" id="slow-note" role="status"></p>
+          <p class="hint" id="race-hint" hidden>Tap the game or press Space (when the game has focus) to start and to flap; the Flap button works too. Speed unlocks once you crash.</p>
+        </div>
+
+        <div class="controls" id="watch-controls" hidden>
+          <div class="control-row">
+            <button type="button" class="btn btn-primary" id="btn-play-pause" disabled>Pause</button>
+            <button type="button" class="btn" id="btn-restart" disabled>Restart</button>
+          </div>
+          <div class="speed-group" role="group" aria-label="Playback speed">
+            <span class="speed-label" aria-hidden="true">Speed</span>
+            <button type="button" class="speed-btn watch-speed-btn" data-speed="0.5" aria-pressed="false" disabled>0.5×</button>
+            <button type="button" class="speed-btn watch-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1×</button>
+            <button type="button" class="speed-btn watch-speed-btn" data-speed="2" aria-pressed="false" disabled>2×</button>
+          </div>
+        </div>
+
 
         <div class="readout" id="live-stats" hidden>
           <p class="readout-line">
@@ -108,37 +150,6 @@
           </p>
           <p class="hint" id="race-time-note"></p>
           <p class="hint" id="best-score-line"></p>
-        </div>
-
-        <div class="controls" id="run-controls" role="group" aria-label="Game controls">
-          <div class="control-row">
-            <button type="button" class="btn btn-primary" id="btn-live-play" disabled>Pause</button>
-            <button type="button" class="btn" id="btn-new-level" disabled>New level <span class="btn-sub" id="level-number"></span></button>
-            <button type="button" class="btn" id="btn-restart-level" disabled>Same level again</button>
-          </div>
-          <button type="button" class="btn btn-flap" id="btn-flap" disabled hidden>Flap</button>
-          <div class="speed-group" id="live-speed-group" role="group" aria-label="Simulation speed">
-            <span class="speed-label" aria-hidden="true">Speed</span>
-            <button type="button" class="speed-btn live-speed-btn" data-speed="0.5" aria-pressed="false" disabled>0.5×</button>
-            <button type="button" class="speed-btn live-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1×</button>
-            <button type="button" class="speed-btn live-speed-btn" data-speed="2" aria-pressed="false" disabled>2×</button>
-            <button type="button" class="speed-btn live-speed-btn" data-speed="4" aria-pressed="false" disabled>4×</button>
-          </div>
-          <p class="hint" id="slow-note" role="status"></p>
-          <p class="hint" id="race-hint" hidden>Flap with Space (when the game has focus), a tap on the game, or the Flap button. Speed unlocks once you crash.</p>
-        </div>
-
-        <div class="controls" id="watch-controls" hidden>
-          <div class="control-row">
-            <button type="button" class="btn btn-primary" id="btn-play-pause" disabled>Pause</button>
-            <button type="button" class="btn" id="btn-restart" disabled>Restart</button>
-          </div>
-          <div class="speed-group" role="group" aria-label="Playback speed">
-            <span class="speed-label" aria-hidden="true">Speed</span>
-            <button type="button" class="speed-btn watch-speed-btn" data-speed="0.5" aria-pressed="false" disabled>0.5×</button>
-            <button type="button" class="speed-btn watch-speed-btn is-active" data-speed="1" aria-pressed="true" disabled>1×</button>
-            <button type="button" class="speed-btn watch-speed-btn" data-speed="2" aria-pressed="false" disabled>2×</button>
-          </div>
         </div>
       </div>
 

@@ -1,0 +1,733 @@
+// Live mode and race mode UI (PLAN P3). app.js owns the mode switch and calls enter()/leave();
+// everything here runs the live brain, draws the shared game canvas and the live activity panel.
+// Pure logic (endless levels, pokes, speed governor) lives in live-core.js.
+
+import { loadLiveModel } from "./live-loader.js";
+import { LiveBrain } from "./lif.js";
+import { inputRates, Readout } from "./live-interface.js";
+import {
+  EndlessLevel,
+  EndlessGame,
+  endlessConfig,
+  defaultPokes,
+  buildLesions,
+  fillInputOpts,
+  pokeSummary,
+  activePokes,
+  formatSurvival,
+  SpeedGovernor,
+} from "./live-core.js?v=6";
+
+const BEST_PIPES_KEY = "flybrain-flappy-best-pipes";
+
+// Display cadence: rendered game frames per second at 1x. A rendering choice, NOT game.frame_ms
+// (that is simulated brain time per game frame).
+const STEP_MS = 1000 / 30;
+// Longest a single animation frame may spend computing before it yields to the browser.
+const MAX_RAF_MS = 16;
+// Frames of history shown by the scrolling panels.
+const HISTORY = 240;
+// Spikes per frame that map to full brightness in the input raster.
+const RASTER_FULL = 5;
+
+const $ = (id) => document.getElementById(id);
+
+function parseColor(cssColor) {
+  const hex = cssColor.replace("#", "");
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+}
+
+function readBest() {
+  try {
+    const n = parseInt(window.localStorage.getItem(BEST_PIPES_KEY) ?? "0", 10);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeBest(n) {
+  try {
+    window.localStorage.setItem(BEST_PIPES_KEY, String(n));
+  } catch {
+    // storage can throw (private mode, quota); never blocks play
+  }
+}
+
+const pipesText = (n) => `${n} ${n === 1 ? "pipe" : "pipes"}`;
+
+/**
+ * @param {{canvas: HTMLCanvasElement, viewWidth: number, getCss: (name:string)=>string,
+ *          prefersReducedMotion: boolean}} opts
+ */
+export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion }) {
+  const els = {
+    status: $("live-status"),
+    liveStats: $("live-stats"),
+    livePipes: $("live-pipes"),
+    liveTime: $("live-time"),
+    gameTimeNote: $("game-time-note"),
+    raceTimeNote: $("race-time-note"),
+    raceHumanPipes: $("race-human-pipes"),
+    raceHumanTime: $("race-human-time"),
+    raceFlyPipes: $("race-fly-pipes"),
+    raceFlyTime: $("race-fly-time"),
+    bestLine: $("best-score-line"),
+    gameOver: $("game-over-line"),
+    btnPlay: $("btn-live-play"),
+    btnNewLevel: $("btn-new-level"),
+    btnRestartLevel: $("btn-restart-level"),
+    btnFlap: $("btn-flap"),
+    levelNumber: $("level-number"),
+    speedGroup: $("live-speed-group"),
+    speedBtns: Array.from(document.querySelectorAll(".live-speed-btn")),
+    slowNote: $("slow-note"),
+    raceHint: $("race-hint"),
+    pokeLeft: $("poke-blind-left"),
+    pokeRight: $("poke-blind-right"),
+    pokeGF: $("poke-cut-gf"),
+    pokeInh: $("poke-no-inhibition"),
+    pokeGain: $("poke-gain"),
+    pokeGainValue: $("poke-gain-value"),
+    btnResetBrain: $("btn-reset-brain"),
+    pokeSummary: $("poke-summary"),
+    inputCanvas: $("live-input-canvas"),
+    inputHint: $("live-input-hint"),
+    dnBars: $("live-dn-bars"),
+    gfCanvas: $("live-gf-canvas"),
+    flapDot: $("live-flap-dot"),
+    flapText: $("live-flap-text"),
+  };
+  const controlEls = [
+    els.btnPlay, els.btnNewLevel, els.btnRestartLevel, els.btnFlap, ...els.speedBtns,
+    els.pokeLeft, els.pokeRight, els.pokeGF, els.pokeInh, els.pokeGain, els.btnResetBrain,
+  ];
+
+  const ctx = canvas.getContext("2d");
+  const inputCtx = els.inputCanvas.getContext("2d");
+  const gfCtx = els.gfCanvas.getContext("2d");
+  const scratch = document.createElement("canvas");
+  const scratchCtx = scratch.getContext("2d");
+
+  const st = {
+    kind: null, // "live" | "race" | null (another mode is showing)
+    loaded: false,
+    failed: false,
+    status: "Loading the live model…",
+    model: null,
+    brain: null,
+    readout: null,
+    game: null, // model.game with the frame cap removed
+    steps: 125,
+    rates: null,
+    inputOpts: null,
+    silBuf: null,
+    pokes: defaultPokes(),
+    gov: new SpeedGovernor({ stepMs: STEP_MS }),
+    seed: 0,
+    levelKind: null, // kind the current level was built for
+    level: null,
+    fly: null,
+    human: null,
+    playing: false,
+    started: false, // race: the human has pressed Start
+    resumeOnEnter: false,
+    speed: 1,
+    acc: 0,
+    lastTs: null,
+    raf: 0,
+    slowUntil: 0,
+    flapQueued: false,
+    bestPipes: readBest(),
+    outcomeKey: "",
+    // activity history
+    inputRows: null,
+    raster: null, // Uint8Array(HISTORY * nRows), column-major ring
+    pushed: 0,
+    rendered: 0,
+    gfR: new Uint8Array(HISTORY),
+    gfL: new Uint8Array(HISTORY),
+    outCounts: null,
+    outMax: null,
+    flap: false,
+    dirty: true,
+  };
+
+  // ---------------- small helpers ----------------
+
+  function setText(el, text) {
+    if (el.textContent !== text) el.textContent = text;
+  }
+
+  function setStatus(text) {
+    st.status = text;
+    if (st.kind) setText(els.status, text);
+  }
+
+  function setControlsDisabled(disabled) {
+    for (const el of controlEls) el.disabled = disabled;
+  }
+
+  const isRace = () => st.kind === "race";
+
+  // ---------------- loading ----------------
+
+  async function load() {
+    setStatus("Loading the live model…");
+    try {
+      const { model, csr } = await loadLiveModel("live/");
+      st.model = model;
+      st.game = endlessConfig(model.game);
+      st.steps = Math.round(model.game.frame_ms / model.constants.dt);
+      st.brain = new LiveBrain(model, csr, { seed: 0 });
+      st.readout = new Readout(model.interface, model.roles, model.game.frame_ms);
+      st.rates = new Float32Array(model.n_neurons);
+      st.silBuf = new Uint8Array(model.n_neurons);
+      st.inputOpts = { out: st.rates };
+      st.inputRows = Int32Array.from([...model.roles.input_L, ...model.roles.input_R].sort((a, b) => a - b));
+      st.raster = new Uint8Array(HISTORY * st.inputRows.length);
+      st.outCounts = new Int32Array(model.roles.output.length);
+      st.outMax = new Float64Array(model.roles.output.length).fill(3);
+      buildDnBars();
+      els.inputCanvas.width = HISTORY;
+      els.inputCanvas.height = Math.max(st.inputRows.length, 1);
+      scratch.width = HISTORY;
+      scratch.height = els.inputCanvas.height;
+      els.gfCanvas.width = HISTORY;
+      els.gfCanvas.height = 40;
+      const g = model.game;
+      const note = `Game time, not wall-clock: each frame is ${g.frame_ms} ms of simulated brain time. Speed changes do not affect it.`;
+      els.gameTimeNote.textContent = note;
+      els.raceTimeNote.textContent = note;
+      els.inputHint.textContent =
+        `One column per game frame (last ${HISTORY}), one row per input-seed neuron; newest on the right. ` +
+        `Brighter = more spikes that frame.`;
+      st.loaded = true;
+      setControlsDisabled(false);
+      setStatus("");
+      syncPokeUI();
+      if (st.kind) beginKind();
+    } catch (err) {
+      st.failed = true;
+      setStatus("The live model could not be loaded. The recorded replay still works.");
+      console.error("flybrain-flappy live model failed to load:", err);
+    }
+  }
+
+  // ---------------- enter / leave ----------------
+
+  function enter(kind) {
+    st.kind = kind;
+    setText(els.status, st.status);
+    els.btnFlap.hidden = kind !== "race";
+    els.raceHint.hidden = kind !== "race";
+    if (kind === "race") {
+      canvas.setAttribute("tabindex", "0");
+      canvas.setAttribute(
+        "aria-label",
+        "Flappy Bird game canvas. Your amber bird races the fly's cyan bird. Press Space, click or tap to flap. Live text scores are below."
+      );
+    } else {
+      canvas.removeAttribute("tabindex");
+      canvas.setAttribute(
+        "aria-label",
+        "Flappy Bird game canvas. The fly's bird moves through a column of pipes; live text scores are below."
+      );
+    }
+    canvas.width = viewWidth;
+    canvas.height = (st.game ?? { height: 512 }).height;
+    if (st.loaded) beginKind();
+    else drawBlank();
+  }
+
+  function leave() {
+    st.resumeOnEnter = st.playing;
+    pause();
+    st.kind = null;
+    els.status.textContent = "";
+    canvas.removeAttribute("tabindex");
+  }
+
+  // Start a fresh level for this kind, or resume the one that was showing when the mode was left.
+  function beginKind() {
+    if (st.level && st.levelKind === st.kind) {
+      canvas.width = viewWidth;
+      canvas.height = st.game.height;
+      st.outcomeKey = "";
+      render(true);
+      if (st.resumeOnEnter && !allDone()) play();
+    } else {
+      startLevel(newSeed());
+    }
+  }
+
+  // ---------------- levels ----------------
+
+  function newSeed() {
+    let s;
+    do s = 1 + Math.floor(Math.random() * 9999);
+    while (s === st.seed);
+    return s;
+  }
+
+  const brainSeed = (seed) => (seed ^ 0x5bd1e995) >>> 0;
+
+  function startLevel(seed) {
+    pause();
+    st.seed = seed;
+    st.level = new EndlessLevel(seed, st.game);
+    st.levelKind = st.kind;
+    st.fly = new EndlessGame(st.level, st.game);
+    st.human = isRace() ? new EndlessGame(st.level, st.game) : null;
+    st.brain.reset(brainSeed(seed));
+    st.readout.reset();
+    st.started = false;
+    st.acc = 0;
+    st.lastTs = null;
+    st.flapQueued = false;
+    st.outcomeKey = "";
+    canvas.width = viewWidth;
+    canvas.height = st.game.height;
+    clearActivity();
+    els.gameOver.hidden = true;
+    els.gameOver.textContent = "";
+    setText(els.levelNumber, `#${seed}`);
+    updateBestLine();
+    render(true);
+    // Live plays at once unless the visitor prefers reduced motion; a race always waits for Start.
+    if (st.kind === "live" && !prefersReducedMotion) play();
+  }
+
+  // ---------------- pokes ----------------
+
+  function applyLesions() {
+    if (!st.brain) return;
+    st.brain.setLesions(buildLesions(st.pokes, st.model.roles, st.silBuf));
+    fillInputOpts(st.inputOpts, st.pokes);
+  }
+
+  function syncPokeUI() {
+    const p = st.pokes;
+    const toggles = [
+      [els.pokeLeft, p.blindLeft],
+      [els.pokeRight, p.blindRight],
+      [els.pokeGF, p.cutGiantFiber],
+      [els.pokeInh, p.inhibitionOff],
+    ];
+    for (const [btn, on] of toggles) {
+      btn.setAttribute("aria-pressed", String(on));
+      btn.classList.toggle("is-on", on);
+      btn.querySelector(".toggle-state").textContent = on ? "on" : "off";
+    }
+    const pct = Math.round(p.gain * 100);
+    els.pokeGain.value = String(pct);
+    setText(els.pokeGainValue, `${pct}%`);
+    setText(els.pokeSummary, pokeSummary(p));
+    els.pokeSummary.classList.toggle("is-active", activePokes(p).length > 0);
+    applyLesions();
+  }
+
+  function togglePoke(key) {
+    st.pokes[key] = !st.pokes[key];
+    syncPokeUI();
+  }
+
+  function resetBrain() {
+    st.pokes = defaultPokes();
+    syncPokeUI();
+    if (st.brain) {
+      st.brain.reset(brainSeed(st.seed));
+      st.readout.reset();
+    }
+  }
+
+  // ---------------- play / pause / loop ----------------
+
+  const flyDone = () => !st.fly || !st.fly.alive;
+  const humanDone = () => !st.human || !st.human.alive;
+  const allDone = () => (isRace() ? flyDone() && humanDone() : flyDone());
+
+  function play() {
+    if (!st.loaded || allDone()) return;
+    st.playing = true;
+    st.started = true;
+    st.lastTs = null;
+    syncControls();
+    if (isRace()) canvas.focus({ preventScroll: true }); // so Space flaps instead of re-pressing a button
+    scheduleLoop();
+  }
+
+  function pause() {
+    st.playing = false;
+    if (st.raf) {
+      cancelAnimationFrame(st.raf);
+      st.raf = 0;
+    }
+    syncControls();
+  }
+
+  function scheduleLoop() {
+    if (!st.raf) st.raf = requestAnimationFrame(tick);
+  }
+
+  const requestedSpeed = () => (isRace() && !humanDone() ? 1 : st.speed);
+
+  // One game frame: obs -> input rates -> 125 brain steps -> readout -> flap -> engine step.
+  function stepFrame() {
+    const fly = st.fly;
+    if (fly.alive) {
+      const m = st.model;
+      const obs = fly.observe();
+      inputRates(obs, m.interface, m.roles, m.game, st.inputOpts);
+      const counts = st.brain.run(st.steps, st.rates);
+      const flap = st.readout.step(counts);
+      fly.step(flap);
+      pushActivity(counts, flap);
+    }
+    if (isRace() && st.human.alive) {
+      const f = st.flapQueued;
+      st.flapQueued = false;
+      st.human.step(f);
+    }
+  }
+
+  function tick(ts) {
+    st.raf = 0;
+    if (!st.playing || !st.kind) return;
+    const dt = st.lastTs === null ? 0 : Math.min(ts - st.lastTs, 100);
+    st.lastTs = ts;
+    const req = requestedSpeed();
+    const eff = st.gov.effective(req);
+    st.acc += dt * eff;
+
+    let cappedOut = false;
+    const t0 = performance.now();
+    while (st.acc >= STEP_MS && !allDone()) {
+      const flyRuns = st.fly.alive; // only frames that run the brain say anything about compute cost
+      const s0 = performance.now();
+      stepFrame();
+      const now = performance.now();
+      if (flyRuns) st.gov.record(now - s0);
+      st.acc -= STEP_MS;
+      if (now - t0 > MAX_RAF_MS && st.acc >= STEP_MS) {
+        cappedOut = true; // yield to the browser; the remaining frames run next tick, none are skipped
+        break;
+      }
+    }
+    if (cappedOut) st.acc = Math.min(st.acc, STEP_MS);
+    if (cappedOut || st.gov.isSlowed(req)) st.slowUntil = ts + 2500;
+    setText(els.slowNote, ts < st.slowUntil ? "Slowed to fit this device." : "");
+
+    if (allDone()) st.playing = false;
+    render(false);
+    if (st.playing) scheduleLoop();
+    else syncControls();
+  }
+
+  // ---------------- rendering ----------------
+
+  function drawBlank() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function drawBird(game, y, color, label, labelBelow, displayFrame) {
+    if (!game.alive && game.frame !== displayFrame) return; // a crashed bird only shows at the crash
+    const g = st.game;
+    ctx.globalAlpha = game.alive ? 1 : 0.45;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = getCss("--bg");
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(g.bird_x, y, g.bird_radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (label) {
+      ctx.font = "600 12px 'Fira Sans', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = color;
+      ctx.fillText(label, g.bird_x, labelBelow ? y + g.bird_radius + 14 : y - g.bird_radius - 5);
+    }
+  }
+
+  function drawScene() {
+    const g = st.game;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const displayFrame = st.human ? Math.max(st.fly.frame, st.human.frame) : st.fly.frame;
+    const [k0, k1] = st.level.visibleRange(displayFrame, w);
+    const body = "#233348";
+    const edge = "#6E93B5";
+    for (let k = k0; k <= k1; k++) {
+      const p = st.level.pipes[k];
+      const x = p.x0 - displayFrame * g.pipe_speed;
+      if (x + g.pipe_width < 0 || x > w) continue;
+      const gapTop = p.gap_centre - g.gap_height / 2;
+      const gapBottom = p.gap_centre + g.gap_height / 2;
+      ctx.fillStyle = body;
+      ctx.fillRect(x, 0, g.pipe_width, gapTop);
+      ctx.fillRect(x, gapBottom, g.pipe_width, h - gapBottom);
+      ctx.fillStyle = edge;
+      ctx.fillRect(x, gapTop - 6, g.pipe_width, 6);
+      ctx.fillRect(x, gapBottom, g.pipe_width, 6);
+    }
+    const race = isRace();
+    drawBird(st.fly, st.fly.birdY, getCss("--fly"), race ? "Fly" : "", false, displayFrame);
+    if (st.human) drawBird(st.human, st.human.birdY, getCss("--human"), "You", true, displayFrame);
+  }
+
+  function updateStats() {
+    const ms = st.model.game.frame_ms;
+    if (isRace()) {
+      setText(els.raceHumanPipes, String(st.human.score));
+      setText(els.raceHumanTime, formatSurvival(st.human.frame, ms));
+      setText(els.raceFlyPipes, String(st.fly.score));
+      setText(els.raceFlyTime, formatSurvival(st.fly.frame, ms));
+    } else {
+      setText(els.livePipes, String(st.fly.score));
+      setText(els.liveTime, formatSurvival(st.fly.frame, ms));
+    }
+  }
+
+  // Result line; rewritten only when a bird crashes so the live region announces each event once.
+  function updateOutcome() {
+    const key = `${st.fly.alive ? 1 : 0}${st.human ? (st.human.alive ? 1 : 0) : "-"}`;
+    if (key === st.outcomeKey) return;
+    st.outcomeKey = key;
+    const ms = st.model.game.frame_ms;
+    const fly = `${pipesText(st.fly.score)}, ${formatSurvival(st.fly.frame, ms)}`;
+    let text = "";
+    if (!isRace()) {
+      if (!st.fly.alive) text = `The fly crashed on level #${st.seed}: ${fly} of game time.`;
+    } else {
+      const you = st.human ? `${pipesText(st.human.score)}, ${formatSurvival(st.human.frame, ms)}` : "";
+      if (!st.human.alive && !st.fly.alive) {
+        text = `You: ${you} · Fly: ${fly}. ${
+          st.human.score > st.fly.score ? "You passed more pipes." : st.human.score < st.fly.score ? "The fly passed more pipes." : "Same number of pipes."
+        }`;
+      } else if (!st.human.alive) {
+        text = `You crashed: ${you}. The fly is still flying; speed is unlocked so you can skip ahead.`;
+      } else if (!st.fly.alive) {
+        text = `The fly crashed: ${fly}. You are still flying.`;
+      }
+      if (!st.human.alive && st.human.score > st.bestPipes) {
+        st.bestPipes = st.human.score;
+        writeBest(st.bestPipes);
+      }
+      updateBestLine();
+    }
+    els.gameOver.hidden = text === "";
+    els.gameOver.textContent = text;
+  }
+
+  function updateBestLine() {
+    setText(els.bestLine, `Your best on this device: ${pipesText(st.bestPipes)} (kept in this browser only, never sent anywhere).`);
+  }
+
+  function render(force) {
+    if (!st.level) return;
+    drawScene();
+    updateStats();
+    updateOutcome();
+    if (force || st.dirty) drawActivity();
+    syncControls();
+  }
+
+  // ---------------- activity panel ----------------
+
+  function clearActivity() {
+    st.pushed = 0;
+    st.rendered = 0;
+    st.raster.fill(0);
+    st.gfR.fill(0);
+    st.gfL.fill(0);
+    st.outCounts.fill(0);
+    st.outMax.fill(3);
+    st.flap = false;
+    inputCtx.clearRect(0, 0, els.inputCanvas.width, els.inputCanvas.height);
+    st.dirty = true;
+  }
+
+  function pushActivity(counts, flap) {
+    const rows = st.inputRows;
+    const n = rows.length;
+    const col = st.pushed % HISTORY;
+    const base = col * n;
+    for (let r = 0; r < n; r++) {
+      const a = (counts[rows[r]] * 255) / RASTER_FULL;
+      st.raster[base + r] = a > 255 ? 255 : a;
+    }
+    const out = st.model.roles.output;
+    for (let k = 0; k < out.length; k++) {
+      const c = counts[out[k]];
+      st.outCounts[k] = c;
+      st.outMax[k] = Math.max(st.outMax[k] * 0.999, c, 3);
+    }
+    const gf = st.model.roles.dnp01;
+    st.gfR[col] = Math.min(255, counts[gf[0]]);
+    st.gfL[col] = Math.min(255, counts[gf[1]]);
+    st.flap = flap;
+    st.pushed++;
+    st.dirty = true;
+  }
+
+  function buildDnBars() {
+    const labels = st.model.roles.output_labels;
+    els.dnBars.innerHTML = "";
+    labels.forEach((label, i) => {
+      const wrap = document.createElement("div");
+      wrap.className = "dn-bar";
+      const track = document.createElement("div");
+      track.className = "dn-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "dn-bar-fill" + (label.startsWith("DNp01") ? " is-gf" : "");
+      fill.style.height = "0%";
+      track.appendChild(fill);
+      const text = document.createElement("div");
+      text.className = "dn-bar-label";
+      text.textContent = label;
+      wrap.appendChild(track);
+      wrap.appendChild(text);
+      els.dnBars.appendChild(wrap);
+    });
+    st.dnFills = Array.from(els.dnBars.querySelectorAll(".dn-bar-fill"));
+    st.dnPct = new Array(labels.length).fill(-1);
+  }
+
+  function drawActivity() {
+    st.dirty = false;
+    const n = st.inputRows.length;
+
+    // input raster: shift the picture left by the new columns, then paint them at the right edge
+    const fresh = Math.min(st.pushed - st.rendered, HISTORY);
+    if (fresh > 0) {
+      const w = HISTORY;
+      scratchCtx.clearRect(0, 0, w, n);
+      scratchCtx.drawImage(els.inputCanvas, 0, 0);
+      inputCtx.clearRect(0, 0, w, n);
+      inputCtx.drawImage(scratch, -fresh, 0);
+      const img = inputCtx.createImageData(fresh, n);
+      const [fr, fg, fb] = parseColor(getCss("--ok"));
+      for (let c = 0; c < fresh; c++) {
+        const col = (st.pushed - fresh + c) % HISTORY;
+        for (let r = 0; r < n; r++) {
+          const i = (r * fresh + c) * 4;
+          img.data[i] = fr;
+          img.data[i + 1] = fg;
+          img.data[i + 2] = fb;
+          img.data[i + 3] = st.raster[col * n + r];
+        }
+      }
+      inputCtx.putImageData(img, w - fresh, 0);
+    }
+    st.rendered = st.pushed;
+
+    // escape-neuron bars: spikes in the latest frame, scaled to each neuron's recent maximum
+    for (let k = 0; k < st.dnFills.length; k++) {
+      const pct = Math.round(Math.min(100, (st.outCounts[k] / st.outMax[k]) * 100));
+      if (pct !== st.dnPct[k]) {
+        st.dnPct[k] = pct;
+        st.dnFills[k].style.height = `${pct}%`;
+      }
+    }
+
+    // giant fiber trace: R solid, L faded, newest on the right
+    const gw = els.gfCanvas.width;
+    const gh = els.gfCanvas.height;
+    gfCtx.clearRect(0, 0, gw, gh);
+    const count = Math.min(st.pushed, HISTORY);
+    if (count > 0) {
+      let maxV = 3;
+      for (let i = 0; i < HISTORY; i++) maxV = Math.max(maxV, st.gfR[i], st.gfL[i]);
+      gfCtx.strokeStyle = getCss("--gf");
+      gfCtx.lineWidth = 1;
+      const trace = (series, alpha) => {
+        gfCtx.globalAlpha = alpha;
+        gfCtx.beginPath();
+        for (let i = 0; i < count; i++) {
+          const v = series[(st.pushed - count + i) % HISTORY];
+          const x = gw - count + i;
+          const y = gh - (v / maxV) * (gh - 2) - 1;
+          if (i === 0) gfCtx.moveTo(x, y);
+          else gfCtx.lineTo(x, y);
+        }
+        gfCtx.stroke();
+      };
+      trace(st.gfR, 1);
+      trace(st.gfL, 0.55);
+      gfCtx.globalAlpha = 1;
+    }
+
+    els.flapDot.classList.toggle("is-active", st.flap);
+    setText(els.flapText, st.flap ? "yes" : "no");
+  }
+
+  // ---------------- controls ----------------
+
+  function syncControls() {
+    if (!st.loaded) return;
+    const race = isRace();
+    const over = allDone();
+    let label;
+    if (race) label = !st.started ? "Start race" : st.playing ? "Pause" : "Resume";
+    else label = st.playing ? "Pause" : "Play";
+    setText(els.btnPlay, label);
+    els.btnPlay.disabled = over;
+    els.btnFlap.disabled = !(race && st.playing && st.human && st.human.alive);
+    els.speedGroup.hidden = race && !humanDone() ? true : false;
+    for (const b of els.speedBtns) {
+      const on = parseFloat(b.dataset.speed) === st.speed;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-pressed", String(on));
+    }
+  }
+
+  function requestFlap() {
+    if (isRace() && st.playing && st.human && st.human.alive) st.flapQueued = true;
+  }
+
+  function wire() {
+    els.btnPlay.addEventListener("click", () => {
+      if (st.playing) pause();
+      else play();
+    });
+    els.btnNewLevel.addEventListener("click", () => startLevel(newSeed()));
+    els.btnRestartLevel.addEventListener("click", () => startLevel(st.seed));
+    els.btnFlap.addEventListener("click", requestFlap);
+    for (const b of els.speedBtns) {
+      b.addEventListener("click", () => {
+        st.speed = parseFloat(b.dataset.speed);
+        syncControls();
+      });
+    }
+
+    els.pokeLeft.addEventListener("click", () => togglePoke("blindLeft"));
+    els.pokeRight.addEventListener("click", () => togglePoke("blindRight"));
+    els.pokeGF.addEventListener("click", () => togglePoke("cutGiantFiber"));
+    els.pokeInh.addEventListener("click", () => togglePoke("inhibitionOff"));
+    els.pokeGain.addEventListener("input", () => {
+      st.pokes.gain = Number(els.pokeGain.value) / 100;
+      syncPokeUI();
+    });
+    els.btnResetBrain.addEventListener("click", resetBrain);
+
+    canvas.addEventListener("pointerdown", () => requestFlap());
+
+    // Space flaps only in Race, only for the human, and only when focus is on the game or the
+    // page itself, so Space still presses whichever button has focus.
+    window.addEventListener("keydown", (e) => {
+      if (e.code !== "Space" || !isRace() || !st.playing) return;
+      const t = e.target;
+      const onControl = t instanceof Element && t !== canvas && t.closest("button, input, select, textarea, a, summary");
+      if (onControl) return;
+      e.preventDefault();
+      if (!e.repeat) requestFlap();
+    });
+  }
+
+  wire();
+  setControlsDisabled(true);
+
+  return { load, enter, leave };
+}

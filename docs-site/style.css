@@ -88,7 +88,7 @@ button:focus-visible,
   color: var(--muted);
 }
 
-.replay-notice {
+.mode-notice {
   background: var(--panel);
   border: 1px solid var(--border);
   border-left: 4px solid var(--human);
@@ -301,17 +301,21 @@ button:focus-visible,
 /* ---------- controls ---------- */
 
 .controls {
-  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .mode-switch {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .mode-btn,
 .transport button,
+.pokes button,
 .speed-btn {
   font-family: var(--font-ui);
   font-size: 0.9rem;
@@ -332,8 +336,17 @@ button:focus-visible,
 
 .mode-btn:hover,
 .transport button:hover,
+.pokes button:hover,
 .speed-btn:hover {
   border-color: var(--muted);
+}
+
+.transport button:disabled,
+.pokes button:disabled,
+.speed-btn:disabled,
+.pokes input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .transport {
@@ -435,4 +448,181 @@ button:focus-visible,
   background: var(--panel);
   border-radius: 6px;
   color: var(--text);
+}
+
+/* ---------- Phase 2: live + race ---------- */
+
+.stage-left,
+.stage-right {
+  min-width: 0; /* grid children must be allowed to shrink below their content on phones */
+}
+
+.stage-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats {
+  margin-top: 4px;
+}
+
+.status-line {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.status-line:empty,
+.hint:empty {
+  display: none;
+}
+
+.canvas-wrap .hint {
+  margin: 4px 0 0;
+}
+
+.score-line {
+  flex-wrap: wrap;
+  column-gap: 12px;
+}
+
+.score-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.race-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.swatch-human { background: var(--human); }
+.swatch-fly { background: var(--fly); }
+
+.btn-sub {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.transport .hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+#game-canvas:focus-visible {
+  outline: 2px solid var(--ok);
+  outline-offset: 2px;
+}
+
+.pokes {
+  margin: 0;
+  padding: 12px;
+  min-width: 0; /* fieldsets default to min-content width, which would overflow a phone */
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pokes legend {
+  padding-inline: 6px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pokes .hint {
+  margin: 0 0 10px;
+}
+
+.poke-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.poke-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  text-align: left;
+}
+
+.poke-toggle .toggle-state {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.poke-toggle.is-on {
+  border-color: var(--gf);
+  color: var(--gf);
+}
+
+.poke-toggle.is-on .toggle-state {
+  color: var(--gf);
+}
+
+.poke-slider {
+  margin-bottom: 12px;
+}
+
+.poke-slider label {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.poke-slider output {
+  font-family: var(--font-mono);
+  color: var(--fly);
+}
+
+.poke-slider input[type="range"] {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  accent-color: var(--fly);
+}
+
+.poke-slider input[type="range"]:focus-visible {
+  outline: 2px solid var(--ok);
+  outline-offset: 2px;
+}
+
+.poke-summary {
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.poke-summary.is-active {
+  color: var(--gf);
+}
+
+.explainer-sub {
+  margin: 20px 0 0;
+  font-size: 0.95rem;
 }

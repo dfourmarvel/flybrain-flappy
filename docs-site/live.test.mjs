@@ -315,15 +315,57 @@ async function main() {
     const mN = median(noInh.times);
     const rI = intact.spikes / (N * 200 * 0.025);
     const rN = noInh.spikes / (N * 200 * 0.025);
+    // Timing depends on the machine: on a shared CI runner it is reported, never gated.
     report(
-      "T7 performance",
-      mI <= 10 && mN <= 10,
+      "T7 performance" + (process.env.CI ? " (report only on CI)" : ""),
+      process.env.CI ? true : mI <= 10 && mN <= 10,
       `median ms per 125-step frame (200 frames, fly playing): intact ${fmt(mI, 3)} ms (mean rate ${fmt(rI, 2)} Hz), ` +
         `inhibitionOff ${fmt(mN, 3)} ms (mean rate ${fmt(rN, 2)} Hz); budget 10 ms`
     );
   }
 
-  console.log(failures === 0 ? "ALL 7 TESTS PASSED" : `${failures} TEST(S) FAILED`);
+  // T8: the poke effects the page states in its pokes hint (docs-site/index.html).
+  {
+    const { model, csr } = await loadFromDisk();
+    const game = model.game;
+    const N = model.n_neurons;
+    const brain = new LiveBrain(model, csr, { seed: 1 });
+    const gfSilenced = new Uint8Array(N);
+    for (const i of model.roles.dnp01) gfSilenced[i] = 1;
+    const mean = (opts) => {
+      let total = 0;
+      for (let lv = 1; lv <= 4; lv++) {
+        const level = makeLevel(lv, game);
+        brain.reset(500 + lv);
+        brain.setLesions({ silenced: opts.cutGF ? gfSilenced : null, inhibitionOff: false });
+        const readout = new Readout(model.interface, model.roles, game.frame_ms);
+        const engine = createEngine(game, level);
+        const rates = new Float32Array(N);
+        for (let f = 0; f < game.max_frames; f++) {
+          const obs = observe(level, game, engine.frame, engine.birdY);
+          inputRates(obs, model.interface, model.roles, game, {
+            out: rates, inputGain: opts.gain ?? 1, blindLeft: !!opts.blindL, blindRight: !!opts.blindR,
+          });
+          if (!engine.step(readout.step(brain.run(125, rates))).alive) break;
+        }
+        total += engine.score;
+      }
+      return total / 4;
+    };
+    const intact = mean({});
+    const bl = mean({ blindL: true });
+    const br = mean({ blindR: true });
+    const gf = mean({ cutGF: true });
+    const half = mean({ gain: 0.5 });
+    report(
+      "T8 poke effects",
+      bl <= 1 && br <= 1 && gf <= 1, // the dimming result is reported, not gated: it varies by level and seed
+      `mean score over levels 1-4: intact ${fmt(intact, 1)}, blind left ${fmt(bl, 1)}, blind right ${fmt(br, 1)}, ` +
+        `giant fiber cut ${fmt(gf, 1)}, input at 50% ${fmt(half, 1)} (page states: blind eye / cut fiber crash it)`
+    );
+  }
+
+  console.log(failures === 0 ? "ALL 8 TESTS PASSED" : `${failures} TEST(S) FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

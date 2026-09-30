@@ -1,11 +1,11 @@
-// Web demo for flybrain-flappy (Step 10). No build step, no framework.
-// Everything about the level, physics and neuron activity comes from replay/best.json
-// at runtime -- nothing about frame count, score or a GameConfig value is assumed here.
+// Web demo for flybrain-flappy (Step 10 + Phase 2). No build step, no framework.
+// This file owns the mode switch and the recorded-replay mode: everything about that level,
+// physics and neuron activity comes from replay/best.json at runtime -- nothing about frame
+// count, score or a GameConfig value is assumed here. Live and race modes live in live-app.js.
 
-import { createEngine } from "./engine.js";
+import { createLiveApp } from "./live-app.js?v=6";
 
 const VIEW_WIDTH = 400; // logical canvas width in game px; not a GameConfig field, a rendering choice.
-const BEST_SCORE_KEY = "flybrain-flappy-best-score";
 
 // Display/animation cadence, in ms per rendered game-step. This is a rendering choice, NOT
 // config.frame_ms -- that field is simulated brain time (how much brain time one game frame
@@ -17,10 +17,7 @@ const prefersReducedMotion =
 
 const els = {
   canvas: document.getElementById("game-canvas"),
-  scoreLine: document.getElementById("score-line"),
   flyScoreText: document.getElementById("fly-score-text"),
-  humanScoreLine: document.getElementById("human-score-line"),
-  humanScoreText: document.getElementById("human-score-text"),
   gameOverLine: document.getElementById("game-over-line"),
   rasterCanvas: document.getElementById("raster-canvas"),
   rasterPlayhead: document.getElementById("raster-playhead"),
@@ -36,18 +33,27 @@ const els = {
   dataCreditLine: document.getElementById("data-credit-line"),
   flapDot: document.getElementById("flap-dot"),
   flapText: document.getElementById("flap-text"),
-  modeWatch: document.getElementById("mode-watch"),
-  modePlay: document.getElementById("mode-play"),
+  modeButtons: {
+    live: document.getElementById("mode-live"),
+    race: document.getElementById("mode-race"),
+    watch: document.getElementById("mode-watch"),
+  },
+  notices: Array.from(document.querySelectorAll(".mode-notice")),
+  watchStatus: document.getElementById("watch-status"),
   watchControls: document.getElementById("watch-controls"),
-  playControls: document.getElementById("play-controls"),
   btnPlayPause: document.getElementById("btn-play-pause"),
   btnRestart: document.getElementById("btn-restart"),
-  btnFlap: document.getElementById("btn-flap"),
-  btnPlayRestart: document.getElementById("btn-play-restart"),
-  speedBtns: Array.from(document.querySelectorAll(".speed-btn")),
+  speedBtns: Array.from(document.querySelectorAll(".watch-speed-btn")),
   metaGrid: document.getElementById("meta-grid"),
-  bestScoreLine: document.getElementById("best-score-line"),
 };
+
+// Which page sections each mode shows (ids). Everything else is hidden.
+const MODE_SECTIONS = {
+  live: ["live-stats", "run-controls", "pokes", "live-activity"],
+  race: ["race-stats", "run-controls", "pokes", "live-activity"],
+  watch: ["watch-stats", "watch-controls", "watch-activity"],
+};
+const ALL_SECTIONS = ["live-stats", "race-stats", "watch-stats", "run-controls", "pokes", "watch-controls", "live-activity", "watch-activity"];
 
 const ctx = els.canvas.getContext("2d");
 const rasterCtx = els.rasterCanvas.getContext("2d");
@@ -63,7 +69,9 @@ let isRealConnectome = true;
 // convention (first 10 = output-seed) when the field is absent, so an old replay.json still works.
 let roleIdx = { output: [], input: [], inter: [] };
 
-let mode = "watch"; // "watch" | "play"
+let mode = "live"; // "live" | "race" | "watch"
+let replayReady = false;
+let runContextAvailable = false;
 
 // --- watch-mode state ---
 const watch = {
@@ -72,47 +80,36 @@ const watch = {
   speed: 1,
   acc: 0,
   lastTs: null,
+  raf: 0,
 };
 
-// --- play-mode state ---
-const play = {
-  engine: null,
-  running: false,
-  acc: 0,
-  lastTs: null,
-  flapQueued: false,
-  over: false,
-  bestScore: readBestScore(),
-};
-
-function readBestScore() {
-  try {
-    const raw = window.localStorage.getItem(BEST_SCORE_KEY);
-    const n = raw === null ? 0 : parseInt(raw, 10);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeBestScore(n) {
-  try {
-    window.localStorage.setItem(BEST_SCORE_KEY, String(n));
-  } catch {
-    // localStorage can throw (private mode, quota, disabled) -- ignore, never blocks play.
-  }
-}
+const live = createLiveApp({
+  canvas: els.canvas,
+  viewWidth: VIEW_WIDTH,
+  getCss,
+  prefersReducedMotion,
+});
 
 async function main() {
-  // The replay is ~0.6 MB: until it arrives, every control is inert, so disable them rather
-  // than silently swallowing clicks (a click on "Play" before load did nothing at all).
-  const allControls = document.querySelectorAll("button");
-  allControls.forEach((b) => { b.disabled = true; });
-  const playLabel = els.btnPlayPause.textContent;
-  els.btnPlayPause.textContent = "Loading…";
+  wireControls();
+  setMode("live");
+  live.load(); // handles its own loading state and failure; never throws
+  await initReplay();
+}
 
-  const res = await fetch("replay/best.json");
-  data = await res.json();
+// The replay is ~0.6 MB: until it arrives its controls stay disabled (they start disabled in
+// the markup) rather than silently swallowing clicks.
+async function initReplay() {
+  els.watchStatus.textContent = "Loading the recorded replay…";
+  try {
+    const res = await fetch("replay/best.json");
+    if (!res.ok) throw new Error(`replay/best.json: HTTP ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    els.watchStatus.textContent = "The recorded replay could not be loaded.";
+    console.error("flybrain-flappy replay failed to load:", err);
+    return;
+  }
   config = data.config;
   level = data.level;
 
@@ -126,27 +123,17 @@ async function main() {
   computeRoleGroups();
   applyConnectomeProvenance();
 
-  els.canvas.width = VIEW_WIDTH;
-  els.canvas.height = config.height;
-
   buildMetaGrid();
   buildDnBars();
   drawInputRasterStatic();
   drawRasterStatic();
   drawGfStatic();
-  updateBestScoreLine();
 
-  allControls.forEach((b) => { b.disabled = false; });
-  els.btnPlayPause.textContent = playLabel;
-
-  setMode("watch");
-  wireControls();
-
-  if (watch.playing) {
-    requestAnimationFrame(watchLoop);
-  } else {
-    renderWatchFrame(); // draw frame 0 statically, no animation, per reduced-motion gate
-  }
+  els.watchStatus.textContent = "";
+  els.btnPlayPause.textContent = watch.playing ? "Pause" : "Play";
+  document.querySelectorAll("#watch-controls button").forEach((b) => { b.disabled = false; });
+  replayReady = true;
+  if (mode === "watch") showWatch();
 }
 
 // Groups activity.* neuron indices by activity.roles (new field). Never groups by position.
@@ -195,7 +182,7 @@ function applyConnectomeProvenance() {
       `to the looming neurons, and how the escape neurons' spikes become a flap. The brain did not ` +
       `learn Flappy Bird; the interface around it was fitted.` +
       (ctx
-        ? `<br><br><strong>What the brain is doing.</strong> The interface already tells it whether ` +
+        ? `<br><br><strong>What the brain is doing (offline runs, levels capped at 1,500 frames).</strong> The interface already tells it whether ` +
           `the gap is above or below, by which side's looming neurons it drives. The circuit's job ` +
           `is to carry that left/right signal to the escape neurons while keeping the two sides largely separate. ` +
           `A one-line rule using the same signal, with no brain at all, scores ` +
@@ -212,7 +199,8 @@ function applyConnectomeProvenance() {
         `<span class="mono">${data.meta.heldout_mean.toFixed(1)}</span> of 22 across 20 unseen levels). ` +
         `The median run scored <span class="mono">${ctx.real_median.toFixed(1)}</span>; ` +
         `${ctx.real_runs_at_or_below_3_3} of ${ctx.real_runs} scored 3.3 or less.`;
-      els.runContext.hidden = false;
+      runContextAvailable = true;
+      els.runContext.hidden = mode !== "watch";
     }
 
     els.dataCreditLine.innerHTML =
@@ -265,17 +253,13 @@ function escapeHtml(s) {
   })[c]);
 }
 
-function updateBestScoreLine() {
-  els.bestScoreLine.textContent = `Your best on this device: ${play.bestScore} (kept in this browser only, never sent anywhere).`;
-}
-
 // ---------------- canvas: game rendering ----------------
 
 function pipeXAtFrame(pipe, f) {
   return pipe.x0 - f * config.pipe_speed;
 }
 
-function drawGame(frameNumber, birdY, birdColor, ghostY) {
+function drawGame(frameNumber, birdY, birdColor) {
   const w = els.canvas.width;
   const h = els.canvas.height;
   ctx.clearRect(0, 0, w, h);
@@ -294,16 +278,6 @@ function drawGame(frameNumber, birdY, birdColor, ghostY) {
     ctx.fillStyle = edge;
     ctx.fillRect(x, gapTop - 6, config.pipe_width, 6);
     ctx.fillRect(x, gapBottom, config.pipe_width, 6);
-  }
-
-  // ghost bird (fly, in play mode)
-  if (ghostY !== undefined && ghostY !== null) {
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = getCss("--fly");
-    ctx.beginPath();
-    ctx.arc(config.bird_x, ghostY, config.bird_radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
   }
 
   // main bird
@@ -475,12 +449,21 @@ function renderWatchFrame() {
   updateFlapIndicator(data.fly.flap[i] === 1);
 }
 
+// Exactly one animation loop runs for the replay, however often it is (re)started.
+function startWatchLoop() {
+  if (watch.raf) cancelAnimationFrame(watch.raf);
+  watch.lastTs = null;
+  watch.raf = requestAnimationFrame(watchLoop);
+}
+
+function stopWatchLoop() {
+  if (watch.raf) cancelAnimationFrame(watch.raf);
+  watch.raf = 0;
+}
+
 function watchLoop(ts) {
-  if (mode !== "watch") return;
-  if (!watch.playing) {
-    watch.lastTs = null;
-    return;
-  }
+  watch.raf = 0;
+  if (mode !== "watch" || !watch.playing) return;
   if (watch.lastTs === null) watch.lastTs = ts;
   const dt = ts - watch.lastTs;
   watch.lastTs = ts;
@@ -501,7 +484,7 @@ function watchLoop(ts) {
     }
   }
   if (advanced || watch.frameIdx === 0) renderWatchFrame();
-  requestAnimationFrame(watchLoop);
+  if (watch.playing) watch.raf = requestAnimationFrame(watchLoop);
 }
 
 function restartWatch() {
@@ -511,115 +494,52 @@ function restartWatch() {
   renderWatchFrame();
 }
 
-// ---------------- play mode ----------------
-
-function startPlay() {
-  play.engine = createEngine(config, level);
-  play.running = true;
-  play.over = false;
-  play.acc = 0;
-  play.lastTs = null;
-  play.flapQueued = false;
-  els.gameOverLine.hidden = true;
-  els.humanScoreLine.hidden = false;
-  els.humanScoreText.textContent = "0";
-  requestAnimationFrame(playLoop);
-}
-
-function requestFlap() {
-  if (mode === "play" && play.running) {
-    play.flapQueued = true;
-  }
-}
-
-function playLoop(ts) {
-  if (mode !== "play" || !play.running) return;
-  if (play.lastTs === null) play.lastTs = ts;
-  const dt = ts - play.lastTs;
-  play.lastTs = ts;
-  play.acc += dt;
-
-  const stepMs = DISPLAY_STEP_MS;
-  while (play.acc >= stepMs) {
-    play.acc -= stepMs;
-    const flap = play.flapQueued;
-    play.flapQueued = false;
-    const obs = play.engine.step(flap);
-    if (els.humanScoreText.textContent !== String(obs.score)) {
-      els.humanScoreText.textContent = String(obs.score);
-    }
-    if (!obs.alive) {
-      endPlay();
-      break;
-    }
-  }
-
-  if (play.running) {
-    renderPlayFrame();
-    requestAnimationFrame(playLoop);
-  }
-}
-
-function renderPlayFrame() {
-  const f = play.engine.frame;
-  const ghostIdx = f - 1;
-  const ghostY =
-    ghostIdx >= 0 && ghostIdx < data.fly.bird_y.length ? data.fly.bird_y[ghostIdx] : null;
-  drawGame(f, play.engine.birdY, getCss("--human"), ghostY);
-}
-
-function endPlay() {
-  play.running = false;
-  renderPlayFrame();
-  const humanScore = play.engine.score;
-  const flyScore = data.meta.score;
-
-  if (humanScore > play.bestScore) {
-    play.bestScore = humanScore;
-    writeBestScore(humanScore);
-  }
-  updateBestScoreLine();
-
-  els.gameOverLine.hidden = false;
-  const sourceLine = isRealConnectome
-    ? `The fly's score came from a frozen real connectome with only its interface fitted -- ` +
-      `no training happened during this replay; its held-out average across 20 seeds was ${data.meta.heldout_mean}.`
-    : `The fly's score came from a synthetic placeholder network, not a real connectome -- ` +
-      `this replay is for testing the page, not a biology result.`;
-  els.gameOverLine.textContent = `You: ${humanScore} · Fly: ${flyScore}. ${sourceLine}`;
+function showWatch() {
+  renderWatchFrame();
+  if (watch.playing) startWatchLoop();
 }
 
 // ---------------- mode + controls ----------------
 
 function setMode(newMode) {
+  const leaving = mode;
   mode = newMode;
-  els.modeWatch.setAttribute("aria-pressed", String(newMode === "watch"));
-  els.modePlay.setAttribute("aria-pressed", String(newMode === "play"));
-  els.watchControls.hidden = newMode !== "watch";
-  els.playControls.hidden = newMode !== "play";
-  els.scoreLine.hidden = newMode !== "watch";
-  els.humanScoreLine.hidden = newMode !== "play" || !play.engine;
+  for (const [name, btn] of Object.entries(els.modeButtons)) {
+    btn.setAttribute("aria-pressed", String(name === newMode));
+  }
+  for (const n of els.notices) n.hidden = n.dataset.mode !== newMode;
+  const shown = MODE_SECTIONS[newMode];
+  for (const id of ALL_SECTIONS) document.getElementById(id).hidden = !shown.includes(id);
+  els.runContext.hidden = !(newMode === "watch" && runContextAvailable);
   els.gameOverLine.hidden = true;
 
   if (newMode === "watch") {
-    play.running = false;
-    renderWatchFrame();
+    live.leave();
+    els.canvas.removeAttribute("tabindex");
+    els.canvas.setAttribute(
+      "aria-label",
+      "Flappy Bird game canvas. A bird moves through a column of pipes; a live text score is below."
+    );
+    els.canvas.width = VIEW_WIDTH;
+    if (config) els.canvas.height = config.height;
+    if (replayReady) showWatch();
   } else {
-    startPlay();
+    if (leaving === "watch") stopWatchLoop();
+    live.enter(newMode);
   }
 }
 
 function wireControls() {
-  els.modeWatch.addEventListener("click", () => setMode("watch"));
-  els.modePlay.addEventListener("click", () => setMode("play"));
+  for (const [name, btn] of Object.entries(els.modeButtons)) {
+    btn.addEventListener("click", () => {
+      if (mode !== name) setMode(name);
+    });
+  }
 
   els.btnPlayPause.addEventListener("click", () => {
     watch.playing = !watch.playing;
     els.btnPlayPause.textContent = watch.playing ? "Pause" : "Play";
-    if (watch.playing) {
-      watch.lastTs = null;
-      requestAnimationFrame(watchLoop);
-    }
+    if (watch.playing) startWatchLoop();
   });
 
   els.btnRestart.addEventListener("click", () => {
@@ -634,20 +554,6 @@ function wireControls() {
         b.setAttribute("aria-pressed", String(b === btn));
       });
     });
-  });
-
-  els.btnFlap.addEventListener("click", requestFlap);
-  els.btnPlayRestart.addEventListener("click", startPlay);
-
-  els.canvas.addEventListener("pointerdown", () => {
-    if (mode === "play") requestFlap();
-  });
-
-  window.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && mode === "play") {
-      e.preventDefault(); // space must flap, never scroll the page
-      if (!e.repeat) requestFlap();
-    }
   });
 }
 

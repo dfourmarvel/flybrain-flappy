@@ -31,6 +31,10 @@ jobs:
         with:
           node-version: "22"
       - run: node docs-site/parity.test.mjs
+      # Live mode's engine must stay statistically equivalent to the Python model (PLAN P2).
+      - run: node docs-site/live.test.mjs
+        env:
+          CI: "true"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

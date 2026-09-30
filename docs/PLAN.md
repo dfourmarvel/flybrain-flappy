@@ -56,6 +56,7 @@ control results are seen.
 | L8 | Tier: **Light** — single planning doc, no database, no auth, no user data. | 2026-09-17 |
 | L9 | **Phase 2: live mode (supersedes the "replay only" part of L7).** The browser also runs the model live. The recorded replay stays as the exact, verified record of the best run. | 2026-09-30 |
 | L10 | Live mode offers: fresh random levels; racing the live fly on the same level; four pokes — blind one eye (silence left or right input seeds), cut the giant fiber (silence DNp01), dim the eyes (input-drive slider), remove inhibition (drop every negative-weight edge). No shuffled-brain swap. | 2026-09-30 |
+| L12 | **Live and race modes are endless** (no 1,500-frame cap; the level extends lazily from its seed). The recorded replay and the experiment keep the cap. Daniel declined a larger sub-circuit: the fly is already near the capped maximum and the brain is not the bottleneck. | 2026-09-30 |
 | L11 | Live fidelity = same model, same fitted interface, **statistically** equivalent to Python (spike-for-spike reproduction is not attempted: float differences grow chaotically). Proven by tests, not asserted. | 2026-09-30 |
 
 ---

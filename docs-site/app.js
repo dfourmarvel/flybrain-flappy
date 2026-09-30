@@ -197,11 +197,13 @@ function applyConnectomeProvenance() {
       (ctx
         ? `<br><br><strong>What the brain is doing.</strong> The interface already tells it whether ` +
           `the gap is above or below, by which side's looming neurons it drives. The circuit's job ` +
-          `is to carry that left/right signal to the escape neurons without mixing the two sides. ` +
+          `is to carry that left/right signal to the escape neurons while keeping the two sides largely separate. ` +
           `A one-line rule using the same signal, with no brain at all, scores ` +
           `<span class="mono">${ctx.rule_baseline.toFixed(2)}</span>, so the circuit is not ` +
-          `solving the game. Shuffled versions of the same wiring mix the sides: all ` +
-          `${ctx.control_runs} of them scored <span class="mono">${ctx.control_best.toFixed(2)}</span> or less.`
+          `solving the game. Shuffled versions of the same wiring lose that left/right separation ` +
+          `and are also much more active overall; all ${ctx.control_runs} of them scored ` +
+          `<span class="mono">${ctx.control_best.toFixed(2)}</span> or less. Which of those differences ` +
+          `makes them fail was not tested (<a href="https://github.com/dfourmarvel/flybrain-flappy/blob/main/docs/EXPLORATORY.md" rel="noopener">details</a>).`
         : "");
 
     if (ctx) {

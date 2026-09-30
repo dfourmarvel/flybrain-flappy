@@ -25,9 +25,9 @@ Runs: found 30/30 real runs, 30/30 control runs finished.
 
 ### C1 -- does the real circuit play above chance?
 
-28/30 real-connectome runs score above the best shuffled control (0.05) on unseen levels; the best run's held-out mean is 21.00 of a possible 22. 6/30 runs scored 3.3 or less. An interface that does not use the brain scores 0: with the readout weights zeroed, or with the visual input switched off, the bird never passes a pipe (tests/test_interface.py::TestBrainFreeBaselines). **C1 supported.**
+28/30 real-connectome runs score above the best shuffled control (0.05) on unseen levels; the best run's held-out mean is 21.00 of a possible 22. 6/30 runs scored 3.3 or less. This interface scores 0 when the brain's input or output is cut (readout weights zeroed, or visual input switched off: the bird never passes a pipe; tests/test_interface.py::TestBrainFreeBaselines). **C1 supported.**
 
-**What the brain is and is not doing.** The interface itself works out whether the bird is above or below the gap and delivers that as *which side's* looming neurons are driven. A brain-free one-line rule acting on that same information (flap when the bird is more than 20 px below the gap, with the same one-frame delay) scores a held-out mean of 20.45 -- higher than 28/30 real runs. So the circuit is not solving the game; its contribution is carrying the left/right signal from the looming neurons to the escape neurons without mixing the two sides.
+**What the brain is and is not doing.** The interface itself works out whether the bird is above or below the gap and delivers that as *which side's* looming neurons are driven. A brain-free one-line rule acting on that same information (flap when the bird is more than 20 px below the gap, with the same one-frame delay) scores a held-out mean of 20.45 -- higher than 26 of 30 real runs and equal to 2. So the circuit is not solving the game; its contribution is carrying the left/right signal from the looming neurons to the escape neurons while keeping the two sides largely separate.
 
 ### Primary -- held-out mean score
 
@@ -55,7 +55,7 @@ Real outperforms control on held-out score (C2 supported). This is conditional o
 
 Log-rank chi-square = 35.701, p < 0.0001.
 
-Training budget reached: real runs ran 40-150 generations, controls 150-150. Both arms had the same budget (150 generations or 90 minutes, whichever came first), but a candidate that survives makes each generation slower, so runs that learned hit the time limit sooner. This gives the controls more generations, not fewer, so it works against the real wiring rather than for it.
+Training budget reached: real runs ran 40-150 generations, controls 150-150. Both arms had the same stopping rules (150 generations, 90 minutes, or two perfect probe scores in a row, whichever came first), but a candidate that survives makes each generation slower, so runs whose fitted interface kept the bird alive hit the time limit sooner. This gives the controls more generations, not fewer, so it works against the real wiring rather than for it.
 
 An exploratory (post-hoc, not pre-registered) analysis of *why* the shuffled networks fail is in [EXPLORATORY.md](EXPLORATORY.md).
 

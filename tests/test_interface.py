@@ -260,3 +260,32 @@ class TestPlayBatch:
         assert f[0] > f[1]
         assert (f[0] - scores[0]) < 1.0
         assert (f[1] - scores[1]) < 1.0
+
+
+# --- Brain-free baselines (backs the C1 claim in docs/RESULTS.md) ----------------------------
+
+
+class TestBrainFreeBaselines:
+    """RESULTS.md answers C1 by saying an interface that does not use the brain scores 0.
+    These tests are the evidence: if either ever scores, that sentence is false."""
+
+    def test_bias_only_controller_never_scores(self, network):
+        # Readout weights zeroed: the flap decision can only come from the bias term.
+        W, neurons = network
+        biases = np.array([-1e6, -10.0, -1.0, -0.1, 0.0, 0.1, 1.0, 10.0, 1e6])
+        X = np.zeros((biases.size, N_PARAMS))
+        X[:, 15] = biases
+        for game_seed in (0, 1, 7):
+            res = play_batch(W, neurons, X, game_seed=game_seed, sim_seed=game_seed,
+                             max_frames=GameConfig().max_frames)
+            assert res.scores.max() == 0, f"bias-only scored on game seed {game_seed}"
+
+    def test_blind_brain_never_scores(self, network):
+        # Visual drive switched off (gain and baseline at their floor): the brain sees no
+        # pipes, whatever the readout does.
+        W, neurons = network
+        X = np.random.default_rng(0).normal(size=(16, N_PARAMS))
+        X[:, 0] = -50.0  # G -> 0 Hz
+        X[:, 3] = -50.0  # r0 -> 0 Hz
+        res = play_batch(W, neurons, X, game_seed=3, sim_seed=3, max_frames=600)
+        assert res.scores.max() == 0

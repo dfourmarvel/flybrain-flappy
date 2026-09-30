@@ -51,6 +51,10 @@ LIMITATIONS = [
     "convention with no biological meaning -- left/right is really visual-field side.",
     "The interface (Step 5) was fitted specifically for this task; it is not a general-purpose "
     "readout of the connectome.",
+    "The neuron model has no adaptation or short-term synaptic plasticity, so no neuron -- the "
+    "giant fiber included -- can habituate. The giant fiber's sustained firing in figure 4 is a "
+    "property of the model, not a prediction about the real fly, whose giant fiber fires single "
+    "spikes to trigger an escape.",
 ]
 
 
@@ -620,8 +624,23 @@ def render_results_md(
 
     lines.append("## Results")
     lines.append("")
-    lines.append(f"Runs found: {loaded.status_line()}.")
+    lines.append(f"Runs: {loaded.status_line()}.")
     lines.append("")
+
+    # C1 is answered from the real arm alone: an untrained or brain-blind interface scores 0
+    # (tests/test_interface.py::TestBrainFreeBaselines -- bias-only and blind controllers), so any
+    # held-out score above 0 is play the fitted interface could only get from the brain.
+    real_valid = loaded.real["heldout_mean"].dropna() if not loaded.real.empty else []
+    if len(real_valid):
+        n_above = int((real_valid > 0).sum())
+        lines.append("### C1 -- does the real circuit play above chance?")
+        lines.append("")
+        lines.append(
+            f"{n_above}/{len(real_valid)} real-connectome runs score above 0 on unseen levels "
+            f"(best run: held-out mean {real_valid.max():.2f} of a possible 22). A brain-free "
+            "interface scores 0: with the readout weights zeroed, or with the visual input "
+            "switched off, the bird never passes a pipe. **C1 supported.**")
+        lines.append("")
 
     lines.append("### Primary -- held-out mean score")
     lines.append("")
@@ -667,7 +686,12 @@ def render_results_md(
             "measure below."
         )
     elif primary.p_value < 0.05 and primary.rank_biserial > 0:
-        lines.append("Real outperforms control on held-out score (C2 supported).")
+        lines.append(
+            "Real outperforms control on held-out score (C2 supported). This is conditional on "
+            "the interface: it encodes above/below the gap as a left/right input split, so the "
+            "task needs a network that keeps the two sides apart -- see "
+            "[EXPLORATORY.md](EXPLORATORY.md) for the evidence that the real wiring does and "
+            "the shuffled wiring does not.")
     elif primary.p_value < 0.05 and primary.rank_biserial < 0:
         lines.append(
             "Control outperforms real on held-out score. **C2 fails**: the real wiring does "
@@ -712,13 +736,22 @@ def render_results_md(
         )
         lines.append("")
 
+    lines.append(
+        "An exploratory (post-hoc, not pre-registered) analysis of *why* the shuffled networks "
+        "fail is in [EXPLORATORY.md](EXPLORATORY.md).")
+    lines.append("")
     lines.append("### Figures")
     lines.append("")
     lines.append(f"1. ![Held-out score by network]({figures_rel['strip']})")
     lines.append(f"2. ![Mean fitness across generations]({figures_rel['fitness']})")
     lines.append(f"3. ![Probe-score curves]({figures_rel['probe']})")
     if gf_figure_written:
-        lines.append(f"4. ![Giant-fiber habituation]({figures_rel['gf']})")
+        lines.append(f"4. ![Giant-fiber (DNp01) firing across one episode]({figures_rel['gf']})")
+        lines.append("")
+        lines.append(
+            "   Figure 4 was planned to show whether the giant fiber habituates under repeated "
+            "looming. It cannot: the model has no adaptation mechanism (see Limitations), so the "
+            "steady firing here says nothing about habituation in the real fly.")
     else:
         reason_text = GF_SKIP_MESSAGES.get(gf_skip_reason, "the replay data is unavailable.")
         lines.append(f"4. Giant-fiber habituation figure skipped: {reason_text}")

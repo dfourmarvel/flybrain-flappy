@@ -268,17 +268,18 @@ LIMITATIONS_KEYWORDS = [
     "DNp06",
     "left/right",
     "fitted specifically for this task",
+    "habituate",
 ]
 
 
-def test_results_md_has_eight_limitations_bullets_with_expected_topics(tmp_path):
+def test_results_md_has_nine_limitations_bullets_with_expected_topics(tmp_path):
     real_means = [10.0, 12.0, 14.0, 16.0, 9.0]
     control_means = [5.0, 6.0, 7.0, 4.0, 8.0]
     text = _run_full_analysis(tmp_path, real_means, control_means)
 
     limitations_block = text.split("## Limitations")[1]
     bullets = [line for line in limitations_block.splitlines() if line.startswith("- ")]
-    assert len(bullets) == 8
+    assert len(bullets) == 9
 
     lowered = limitations_block.lower()
     for keyword in LIMITATIONS_KEYWORDS:

@@ -17,6 +17,7 @@ import {
   formatSurvival,
   SpeedGovernor,
 } from "./live-core.js?v=6";
+import { sizeGameCanvas, drawWorld, drawPipe, drawBird, drawTag, BIRD } from "./sprites.js?v=7";
 
 const BEST_PIPES_KEY = "flybrain-flappy-best-pipes";
 
@@ -196,12 +197,12 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       els.gfCanvas.width = HISTORY;
       els.gfCanvas.height = 40;
       const g = model.game;
-      const note = `Game time, not wall-clock: each frame is ${g.frame_ms} ms of simulated brain time. Speed changes do not affect it.`;
+      const note = `Game time, not wall-clock: ${g.frame_ms} ms of simulated brain time per frame, at any speed.`;
       els.gameTimeNote.textContent = note;
       els.raceTimeNote.textContent = note;
       els.inputHint.textContent =
-        `One column per game frame (last ${HISTORY}), one row per input-seed neuron; newest on the right. ` +
-        `Brighter = more spikes that frame.`;
+        `One row per input neuron, one column per frame (last ${HISTORY}), newest on the right. ` +
+        `Brighter = more spikes.`;
       st.loaded = true;
       setControlsDisabled(false);
       setStatus("");
@@ -225,7 +226,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       canvas.setAttribute("tabindex", "0");
       canvas.setAttribute(
         "aria-label",
-        "Flappy Bird game canvas. Your amber bird races the fly's cyan bird. Press Space, click or tap to flap. Live text scores are below."
+        "Flappy Bird game canvas. Your red bird races the fly's yellow bird. Press Space, click or tap to flap. Live text scores are below."
       );
     } else {
       canvas.removeAttribute("tabindex");
@@ -234,8 +235,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
         "Flappy Bird game canvas. The fly's bird moves through a column of pipes; live text scores are below."
       );
     }
-    canvas.width = viewWidth;
-    canvas.height = (st.game ?? { height: 512 }).height;
+    sizeGameCanvas(canvas, viewWidth, (st.game ?? { height: 512 }).height);
     if (st.loaded) beginKind();
     else drawBlank();
   }
@@ -251,8 +251,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
   // Start a fresh level for this kind, or resume the one that was showing when the mode was left.
   function beginKind() {
     if (st.level && st.levelKind === st.kind) {
-      canvas.width = viewWidth;
-      canvas.height = st.game.height;
+      sizeGameCanvas(canvas, viewWidth, st.game.height);
       st.outcomeKey = "";
       render(true);
       if (st.resumeOnEnter && !allDone()) play();
@@ -286,8 +285,9 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     st.lastTs = null;
     st.flapQueued = false;
     st.outcomeKey = "";
-    canvas.width = viewWidth;
-    canvas.height = st.game.height;
+    st.flyVy = 0;
+    st.humanVy = 0;
+    sizeGameCanvas(canvas, viewWidth, st.game.height);
     clearActivity();
     els.gameOver.hidden = true;
     els.gameOver.textContent = "";
@@ -381,13 +381,17 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       inputRates(obs, m.interface, m.roles, m.game, st.inputOpts);
       const counts = st.brain.run(st.steps, st.rates);
       const flap = st.readout.step(counts);
+      const y0 = fly.birdY;
       fly.step(flap);
+      st.flyVy = fly.birdY - y0;
       pushActivity(counts, flap);
     }
     if (isRace() && st.human.alive) {
       const f = st.flapQueued;
       st.flapQueued = false;
+      const y0 = st.human.birdY;
       st.human.step(f);
+      st.humanVy = st.human.birdY - y0;
     }
   }
 
@@ -427,54 +431,32 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
   // ---------------- rendering ----------------
 
   function drawBlank() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawWorld(ctx, viewWidth, (st.game ?? { height: 512 }).height, 0);
   }
 
-  function drawBird(game, y, color, label, labelBelow, displayFrame) {
+  function drawOneBird(game, vy, colors, label, labelBelow, displayFrame) {
     if (!game.alive && game.frame !== displayFrame) return; // a crashed bird only shows at the crash
     const g = st.game;
-    ctx.globalAlpha = game.alive ? 1 : 0.45;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = getCss("--bg");
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(g.bird_x, y, g.bird_radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    if (label) {
-      ctx.font = "600 12px 'Fira Sans', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillStyle = color;
-      ctx.fillText(label, g.bird_x, labelBelow ? y + g.bird_radius + 14 : y - g.bird_radius - 5);
-    }
+    drawBird(ctx, g.bird_x, game.birdY, g.bird_radius, colors, vy, game.frame, game.alive);
+    if (label) drawTag(ctx, g.bird_x, game.birdY, label, colors.body, labelBelow, g.bird_radius);
   }
 
   function drawScene() {
     const g = st.game;
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
+    const w = viewWidth;
+    const h = g.height;
     const displayFrame = st.human ? Math.max(st.fly.frame, st.human.frame) : st.fly.frame;
+    drawWorld(ctx, w, h, displayFrame * g.pipe_speed);
     const [k0, k1] = st.level.visibleRange(displayFrame, w);
-    const body = "#233348";
-    const edge = "#6E93B5";
     for (let k = k0; k <= k1; k++) {
       const p = st.level.pipes[k];
       const x = p.x0 - displayFrame * g.pipe_speed;
       if (x + g.pipe_width < 0 || x > w) continue;
-      const gapTop = p.gap_centre - g.gap_height / 2;
-      const gapBottom = p.gap_centre + g.gap_height / 2;
-      ctx.fillStyle = body;
-      ctx.fillRect(x, 0, g.pipe_width, gapTop);
-      ctx.fillRect(x, gapBottom, g.pipe_width, h - gapBottom);
-      ctx.fillStyle = edge;
-      ctx.fillRect(x, gapTop - 6, g.pipe_width, 6);
-      ctx.fillRect(x, gapBottom, g.pipe_width, 6);
+      drawPipe(ctx, x, g.pipe_width, p.gap_centre - g.gap_height / 2, p.gap_centre + g.gap_height / 2, h);
     }
     const race = isRace();
-    drawBird(st.fly, st.fly.birdY, getCss("--fly"), race ? "Fly" : "", false, displayFrame);
-    if (st.human) drawBird(st.human, st.human.birdY, getCss("--human"), "You", true, displayFrame);
+    drawOneBird(st.fly, st.flyVy, BIRD.fly, race ? "Fly" : "", false, displayFrame);
+    if (st.human) drawOneBird(st.human, st.humanVy, BIRD.human, "You", true, displayFrame);
   }
 
   function updateStats() {
@@ -608,7 +590,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
       inputCtx.clearRect(0, 0, w, n);
       inputCtx.drawImage(scratch, -fresh, 0);
       const img = inputCtx.createImageData(fresh, n);
-      const [fr, fg, fb] = parseColor(getCss("--ok"));
+      const [fr, fg, fb] = parseColor(getCss("--sig-input"));
       for (let c = 0; c < fresh; c++) {
         const col = (st.pushed - fresh + c) % HISTORY;
         for (let r = 0; r < n; r++) {
@@ -640,7 +622,7 @@ export function createLiveApp({ canvas, viewWidth, getCss, prefersReducedMotion 
     if (count > 0) {
       let maxV = 3;
       for (let i = 0; i < HISTORY; i++) maxV = Math.max(maxV, st.gfR[i], st.gfL[i]);
-      gfCtx.strokeStyle = getCss("--gf");
+      gfCtx.strokeStyle = getCss("--sig-gf");
       gfCtx.lineWidth = 1;
       const trace = (series, alpha) => {
         gfCtx.globalAlpha = alpha;

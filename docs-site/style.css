@@ -19,19 +19,19 @@
   --accent: #F7A12E;      /* primary action + current selection */
   --focus: var(--ink);
 
-  /* the lab panel (dark, where spikes read best) */
-  --panel: #0F1A1F;
-  --panel-2: #16252C;
-  --well: #081014;
-  --line: #2B3F47;
-  --panel-text: #E7F0F1;
-  --panel-muted: #A3B7BC;
+  /* the lab panels */
+  --panel: #FFFFFF;
+  --panel-2: #F4FAFA;
+  --well: #EEF6F7;
+  --line: #B9D0D5;
+  --panel-text: var(--ink);
+  --panel-muted: var(--ink-soft);
 
-  /* one colour per signal; canvas code reads these, keep hex */
-  --sig-input: #7CE38B;
-  --sig-escape: #F8C630;
-  --sig-gf: #FF7EB6;
-  --sig-inter: #6FD3F0;
+  /* one colour per signal, each >= 3:1 against --well; canvas code reads these, keep hex */
+  --sig-input: #178A40;
+  --sig-escape: #C27C00;
+  --sig-gf: #C2185B;
+  --sig-inter: #1F72C4;
 
   --font-ui: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
   --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
@@ -444,16 +444,15 @@ main {
 }
 
 .panel {
-  --focus: #FFE27A;
   container-type: inline-size;
   margin: 0;
   min-width: 0; /* fieldsets default to min-content width, which would overflow a phone */
   padding: 18px 20px 20px;
   color: var(--panel-text);
   background: var(--panel);
-  border: 3px solid var(--ink);
+  border: 2px solid var(--ink);
   border-radius: 12px;
-  box-shadow: 0 5px 0 rgba(19, 38, 46, 0.35);
+  box-shadow: var(--press);
 }
 
 .panel .hint { color: var(--panel-muted); font-size: 0.8125rem; margin-top: 8px; }
@@ -489,7 +488,15 @@ main {
   color: var(--panel-muted);
 }
 
-.poke-summary.is-active { color: var(--accent); }
+.poke-summary.is-active {
+  justify-self: start;
+  width: fit-content;
+  color: var(--ink);
+  font-weight: 700;
+  background: #FBE9A6;
+  border-radius: 6px;
+  padding: 2px 8px;
+}
 
 .trace {
   margin-top: 16px;
@@ -553,7 +560,7 @@ main {
   bottom: 0;
   left: 0;
   width: 2px;
-  background: #fff;
+  background: var(--ink);
   pointer-events: none;
 }
 
@@ -618,7 +625,7 @@ main {
   border: 1px solid var(--line);
 }
 
-.flap-dot.is-active { background: var(--sig-escape); border-color: var(--sig-escape); }
+.flap-dot.is-active { background: var(--bird-fly); border: 2px solid var(--outline); }
 
 /* ---------- pokes ---------- */
 
@@ -641,8 +648,8 @@ main {
 .poke-reset {
   font: 700 0.9rem/1.25 var(--font-ui);
   color: var(--panel-text);
-  background: var(--panel-2);
-  border: 2px solid var(--line);
+  background: #fff;
+  border: 2px solid var(--ink);
   border-radius: var(--radius);
   min-height: 48px;
   padding: 8px 12px;
@@ -659,7 +666,7 @@ main {
 }
 
 .poke-toggle:hover:not(:disabled),
-.poke-reset:hover:not(:disabled) { border-color: var(--panel-muted); }
+.poke-reset:hover:not(:disabled) { background: var(--panel-2); }
 
 .toggle-state {
   font-family: var(--font-mono);
@@ -670,7 +677,7 @@ main {
   padding: 1px 8px;
 }
 
-.poke-toggle.is-on { border-color: var(--accent); background: #2A2418; }
+.poke-toggle.is-on { border-color: var(--ink); background: #FBE9A6; }
 .poke-toggle.is-on .toggle-state { background: var(--accent); color: var(--ink); }
 
 .poke-toggle:disabled,
@@ -688,7 +695,7 @@ main {
   font-size: 0.9rem;
 }
 
-.poke-slider output { font-family: var(--font-mono); color: var(--sig-escape); }
+.poke-slider output { font-family: var(--font-mono); }
 .slider-sub { font-weight: 400; color: var(--panel-muted); }
 
 .poke-slider input[type="range"] {

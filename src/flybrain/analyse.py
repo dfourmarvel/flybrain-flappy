@@ -662,26 +662,27 @@ def render_results_md(
         n_above = int((real_valid > best_ctrl).sum())
         n_low = int((real_valid <= 0.15 * 22).sum())
         rule = rule_baseline()
-        n_beat_rule = int((real_valid > rule).sum())
+        n_rule_higher = int((real_valid < rule).sum())
+        n_rule_tie = int((real_valid == rule).sum())
         lines.append("### C1 -- does the real circuit play above chance?")
         lines.append("")
         lines.append(
             f"{n_above}/{len(real_valid)} real-connectome runs score above the best shuffled "
             f"control ({best_ctrl:.2f}) on unseen levels; the best run's held-out mean is "
             f"{real_valid.max():.2f} of a possible 22. {n_low}/{len(real_valid)} runs scored "
-            f"{0.15 * 22:.1f} or less. An interface that does not use the brain scores 0: with the "
-            "readout weights zeroed, or with the visual input switched off, the bird never "
-            "passes a pipe (tests/test_interface.py::TestBrainFreeBaselines). **C1 supported.**")
+            f"{0.15 * 22:.1f} or less. This interface scores 0 when the brain's input or output is "
+            "cut (readout weights zeroed, or visual input switched off: the bird never passes a "
+            "pipe; tests/test_interface.py::TestBrainFreeBaselines). **C1 supported.**")
         lines.append("")
         lines.append(
             "**What the brain is and is not doing.** The interface itself works out whether the "
             "bird is above or below the gap and delivers that as *which side's* looming neurons "
             "are driven. A brain-free one-line rule acting on that same information (flap when "
             f"the bird is more than {RULE_MARGIN_PX:g} px below the gap, with the same one-frame "
-            f"delay) scores a held-out mean of {rule:.2f} -- higher than {len(real_valid) - n_beat_rule}"
-            f"/{len(real_valid)} real runs. So the circuit is not solving the game; its "
-            "contribution is carrying the left/right signal from the looming neurons to the "
-            "escape neurons without mixing the two sides.")
+            f"delay) scores a held-out mean of {rule:.2f} -- higher than {n_rule_higher} of "
+            f"{len(real_valid)} real runs and equal to {n_rule_tie}. So the circuit is not solving "
+            "the game; its contribution is carrying the left/right signal from the looming "
+            "neurons to the escape neurons while keeping the two sides largely separate.")
         lines.append("")
     lines.append("### Primary -- held-out mean score")
     lines.append("")
@@ -785,8 +786,9 @@ def render_results_md(
         lines.append(
             f"Training budget reached: real runs ran {gens['real'][0]}-{gens['real'][1]} "
             f"generations, controls {gens['control'][0]}-{gens['control'][1]}. Both arms had the "
-            "same budget (150 generations or 90 minutes, whichever came first), but a candidate "
-            "that survives makes each generation slower, so runs that learned hit the time limit "
+            "same stopping rules (150 generations, 90 minutes, or two perfect probe scores in a "
+            "row, whichever came first), but a candidate that survives makes each generation "
+            "slower, so runs whose fitted interface kept the bird alive hit the time limit "
             "sooner. This gives the controls more generations, not fewer, so it works against "
             "the real wiring rather than for it.")
         lines.append("")

@@ -230,9 +230,11 @@ button:focus-visible,
 
 .dn-bars {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  /* one column per output neuron (10) on wide screens, wrapping on phones; each row keeps
+     its own height, so a wrapped row can never spill over the heading below */
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  grid-auto-rows: 90px;
   gap: 6px;
-  height: 90px;
   align-items: end;
 }
 

@@ -1,8 +1,10 @@
 # flybrain-flappy
 
-A sub-circuit of a real fruit-fly brain plays Flappy Bird. The brain's wiring is taken from the
-Janelia/Google **MaleCNS v1.0** connectome and is never changed. Only a 16-parameter interface
-between the game and the brain is fitted.
+*I suck at Flappy Bird, so I had a fly play for me.*
+
+A simulated sub-circuit of a real fruit-fly connectome sits in the control loop of Flappy Bird.
+The wiring is taken from the Janelia/Google **MaleCNS v1.0** connectome and is never changed.
+Only a 16-parameter interface between the game and the circuit is fitted.
 
 **Demo:** https://dfourmarvel.github.io/flybrain-flappy/ — watch a recorded run, then play the
 same level yourself.
@@ -29,10 +31,11 @@ Full write-up: [docs/RESULTS.md](docs/RESULTS.md). Post-hoc explanation:
 - Shuffled wiring: 29 of 30 runs score 0; the best scores 0.05.
 - **What the brain is doing:** the interface already works out whether the gap is above or
   below the bird and delivers it as *which side's* looming neurons are driven. A one-line rule
-  using that same signal, with no brain at all, scores 20.45 — better than 28 of 30 real runs.
+  using that same signal, with no brain at all, scores 20.45 — better than 26 of 30 real runs
+  (2 tie).
   So the circuit is not solving the game. Its contribution is carrying the left/right signal to
-  the escape neurons without mixing the two sides, which the real wiring does and every shuffle
-  fails to do. The shuffles also run about 3x more active overall, and no side-preserving
+  the escape neurons while keeping the two sides largely separate, which the real wiring does
+  and every shuffle fails to do. The shuffles also run about 3x more active overall, and no side-preserving
   shuffle was tested, so the result is specific to this circuit, interface and task.
 
 Limitations are listed in [docs/RESULTS.md](docs/RESULTS.md#limitations).
